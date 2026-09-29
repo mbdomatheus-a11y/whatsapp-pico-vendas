@@ -5,7 +5,7 @@ import { WEEKDAYS, type PlannedMessage, type PreviewResult, type Weekday } from 
 
 const DEFAULT_TEMPLATE = "Ola! O pico de vendas da loja {cod_loja} - {nome_loja} nesta {dia} sera das {faixa_pico}. A escala planejada possui {colaboradores_pico} colaboradores com cobertura nesse periodo. Por favor, organize a equipe para maxima cobertura no pico e confirme o recebimento com OK.";
 
-export function CampaignPlanner({ accounts }: { accounts: { id: string; label: string }[] }) {
+export function CampaignPlanner({ accounts, groupId }: { accounts: { id: string; label: string }[]; groupId: string }) {
   const [day, setDay] = useState<Weekday>("SEGUNDA");
   const [template, setTemplate] = useState(DEFAULT_TEMPLATE);
   const [preview, setPreview] = useState<PreviewResult | null>(null);
@@ -44,10 +44,15 @@ export function CampaignPlanner({ accounts }: { accounts: { id: string; label: s
       {preview.warnings.length > 0 && <details><summary>Ver alertas</summary><ul>{preview.warnings.slice(0, 50).map((warning, index) => <li key={index}>{warning}</li>)}</ul></details>}
       <div className="table-wrap"><table><thead><tr><th>Loja</th><th>Faixa</th><th>Equipe no pico</th><th>Mensagem</th></tr></thead><tbody>{filteredMessages.slice(0, 30).map((item: PlannedMessage) => <tr key={`${item.gerente_id}-${item.telefone}`}><td>{item.gerente_id} {item.loja}</td><td>{item.faixa_pico}</td><td>{item.colaboradores_no_pico ?? "Sem escala"}</td><td className="message-preview">{item.mensagem}</td></tr>)}</tbody></table></div>
       {filteredMessages.length > 30 && <p className="muted">Mostrando 30 de {filteredMessages.length} mensagens selecionadas.</p>}
-      <form action="/api/campaigns" method="post" className="draft-form">
+      <form action="/api/campaigns" method="post" encType="multipart/form-data" className="draft-form">
         <input type="hidden" name="name" value={`Pico ${day}`} />
         <input type="hidden" name="accountId" value={accountId} />
+        <input type="hidden" name="groupId" value={groupId} />
         <input type="hidden" name="messages" value={JSON.stringify(queueMessages)} />
+        <label className="check"><input type="checkbox" name="confirmationEnabled" />Incluir link individual de confirmacao</label>
+        <label>Agendar para, opcional<input type="datetime-local" name="scheduledAt" /></label>
+        <label>Anexos, ate 1 PDF e 3 imagens<input type="file" name="attachments" accept="application/pdf,image/jpeg,image/png,image/webp" multiple /></label>
+        {queueMessages.length > 250 && <label className="check warning"><input type="checkbox" name="riskAccepted" required />Estou ciente do risco de bloqueio e aceito o fracionamento em lotes de ate 100.</label>}
         <button type="submit" disabled={!queueMessages.length}>Criar campanha em rascunho</button>
         <span>Nenhuma mensagem sera enviada nesta etapa.</span>
       </form>

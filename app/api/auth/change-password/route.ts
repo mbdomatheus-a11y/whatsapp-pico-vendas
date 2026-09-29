@@ -12,5 +12,5 @@ export async function POST(request: Request) {
   const { error } = await supabase.auth.updateUser({ password });
   if (error) return NextResponse.redirect(new URL(`/alterar-senha?error=${encodeURIComponent(error.message)}`, request.url), 303);
   await supabase.from("user_profiles").update({ must_change_password: false, changed_at: new Date().toISOString() }).eq("user_id", data.claims.sub);
-  return NextResponse.redirect(new URL("/dashboard", request.url), 303);
+  return NextResponse.redirect(new URL("/seguranca/configurar", request.url), 303);
 }

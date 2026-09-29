@@ -5,6 +5,7 @@ import { EvolutionProvider } from "@/lib/messaging/evolution";
 export async function POST(_: Request, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireApiUser();
   if (!auth) return NextResponse.json({ error: "Nao autorizado" }, { status: 401 });
+  if (!["master","admin"].includes(auth.access.profile.role)) return NextResponse.json({ error: "Somente administradores gerenciam contas" }, { status: 403 });
   const { id } = await params;
   const { data } = await auth.supabase.from("whatsapp_accounts").select("instance_name").eq("id", id).single();
   if (!data) return NextResponse.json({ error: "Conta nao encontrada" }, { status: 404 });

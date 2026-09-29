@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-export function OperationControls({ campaignId, status, tested }: { campaignId: string; status: string; tested: boolean }) {
+export function OperationControls({ campaignId, status, tested, totalMessages }: { campaignId: string; status: string; tested: boolean; totalMessages: number }) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState("");
@@ -20,9 +20,10 @@ export function OperationControls({ campaignId, status, tested }: { campaignId: 
   }
 
   async function startSending() {
+    if (totalMessages > 250 && !window.confirm("Campanhas acima de 250 mensagens aumentam o risco de bloqueio. O portal aplicara lotes de ate 100. Deseja continuar?")) return;
     setSending(true); setMessage("Iniciando envios...");
     let totalSent = 0; let totalFailed = 0;
-    for (let batch = 0; batch < 60; batch += 1) {
+    for (let batch = 0; batch < 500; batch += 1) {
       const response = await fetch(`/api/campaigns/${campaignId}/start`, { method: "POST" });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) { setMessage(body.error ?? "Envio interrompido"); break; }
@@ -30,6 +31,7 @@ export function OperationControls({ campaignId, status, tested }: { campaignId: 
       setMessage(`${totalSent} enviadas, ${body.remaining ?? 0} na fila${totalFailed ? `, ${totalFailed} com erro` : ""}`);
       window.dispatchEvent(new Event("queue-updated"));
       if (body.complete || !body.processed) break;
+      if (body.nextDelayMs > 0) { setMessage(`${totalSent} enviadas, ${body.remaining ?? 0} na fila. Proxima em ${Math.ceil(body.nextDelayMs / 1000)}s`); await new Promise((resolve) => window.setTimeout(resolve, body.nextDelayMs)); }
     }
     setSending(false); router.refresh();
   }

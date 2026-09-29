@@ -23,6 +23,16 @@ MVP semiautomatico baseado na arquitetura aprovada: painel Next.js, autenticacao
 - Resumo para diretores quando a segmentacao inclui `TELEFONE_DIRETOR`.
 - Anonimizacao automatica de telefone e mensagem depois de um envio bem-sucedido.
 - Troca obrigatoria da senha temporaria no primeiro acesso de novos usuarios.
+- Autenticacao TOTP obrigatoria no primeiro acesso e em todos os acessos seguintes.
+- Area administrativa com perfis master, administrador, operador e consulta.
+- Organizacao por grupos, com usuarios vinculados a um ou mais grupos.
+- Senha temporaria, redefinicao de senha e redefinicao de 2FA controladas por perfil.
+- Auditoria de login, configuracoes e operacoes de campanha.
+- Delay aleatorio configuravel, fracionamento em lotes e alerta acima de 250 destinatarios.
+- Envio imediato ou agendado no fuso `America/Sao_Paulo`.
+- Anexos privados: ate um PDF e tres imagens de 10 MB por campanha.
+- Link individual de confirmacao, com token aleatorio, validade de sete dias e uso unico.
+- Painel diario com enviados, confirmados, respostas, reacoes, pendencias e agendamentos.
 
 ## Custo zero e limitacoes
 
@@ -47,6 +57,22 @@ A Evolution API 2.4 passou a exigir ativacao de licenca. O compose usa temporari
 O painel permite cadastrar os integrantes que recebem os testes de todas as campanhas. Os celulares ficam salvos no Supabase, protegidos para acesso exclusivo das rotas do servidor, e aparecem mascarados no portal. Uma campanha so avanca para autorizacao quando o teste chega a todos os integrantes ativos.
 
 Mantenha pelo menos um integrante ativo. O numero antigo configurado em `AUTHORIZED_TEST_NUMBER` e importado automaticamente quando o grupo ainda esta vazio.
+
+## Administracao e seguranca
+
+O administrador master e definido pelo e-mail corporativo configurado na migration e nao aparece na lista administrativa. Sua exclusao somente pode ocorrer diretamente no banco. Administradores gerenciam usuarios dos grupos atribuidos; operadores preparam e executam campanhas; o perfil de consulta e somente leitura.
+
+Novos usuarios recebem uma senha temporaria aleatoria, exibida uma unica vez ao administrador. No primeiro acesso, o usuario troca a senha e ativa um autenticador TOTP. O master pode remover o fator cadastrado para obrigar uma nova configuracao.
+
+## Envios, anexos e confirmacoes
+
+Cada campanha guarda uma copia das regras de delay, lote e pausa vigentes no momento da criacao. O intervalo entre mensagens e sorteado entre o minimo e o maximo configurados. Acima de 250 destinatarios, o portal exige ciencia do risco de bloqueio e limita a recomendacao a lotes de ate 100.
+
+Anexos ficam em bucket privado do Supabase e sao entregues ao gateway por URL assinada de curta duracao. O log guarda texto, nome dos materiais, destinatario mascarado e resultado pelo prazo definido pelo administrador. Prazo zero significa retencao ilimitada.
+
+O link de confirmacao usa token aleatorio, armazena somente seu hash, expira em sete dias e registra apenas a primeira confirmacao. Respostas e reacoes possuem estrutura de dados e indicadores no painel, mas a coleta por webhook da Evolution ficou para a segunda etapa.
+
+Agendamentos sao registrados no horario de Brasilia. No plano gratuito, a execucao precisa do portal aberto ou de um worker local continuamente ativo; a Vercel gratuita nao garante disparo no minuto exato.
 
 ## Planejamento por pico e escala
 

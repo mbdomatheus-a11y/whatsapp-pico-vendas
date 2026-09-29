@@ -1,5 +1,5 @@
 import { serverEnv } from "@/lib/env";
-import type { MessagingProvider, SendTextInput, SendResult } from "./types";
+import type { MessagingProvider, SendMediaInput, SendTextInput, SendResult } from "./types";
 
 function headers() {
   const env = serverEnv();
@@ -32,6 +32,21 @@ export class EvolutionProvider implements MessagingProvider {
         signal: AbortSignal.timeout(20_000),
       },
     );
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) return { success: false, error: body?.message ?? `HTTP ${response.status}` };
+    return { success: true, externalId: body?.key?.id ?? body?.messageId };
+  }
+
+  async sendMedia(input: SendMediaInput): Promise<SendResult> {
+    const env = serverEnv();
+    const mediaType = input.mimeType === "application/pdf" ? "document" : "image";
+    const response = await fetch(`${env.evolutionBaseUrl}/message/sendMedia/${encodeURIComponent(this.instance())}`, {
+      method: "POST",
+      headers: { ...headers(), "Idempotency-Key": input.idempotencyKey },
+      body: JSON.stringify({ number: input.destination, mediatype: mediaType, mimetype: input.mimeType, media: input.mediaUrl, fileName: input.fileName, caption: input.text }),
+      cache: "no-store",
+      signal: AbortSignal.timeout(30_000),
+    });
     const body = await response.json().catch(() => ({}));
     if (!response.ok) return { success: false, error: body?.message ?? `HTTP ${response.status}` };
     return { success: true, externalId: body?.key?.id ?? body?.messageId };
