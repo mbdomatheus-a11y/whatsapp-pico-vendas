@@ -19,12 +19,14 @@ export function CampaignPlanner({ accounts, groupId }: { accounts: { id: string;
 
   async function prepare(formData: FormData) {
     setBusy(true); setError(""); setPreview(null);
-    formData.set("day", day); formData.set("template", template);
-    const response = await fetch("/api/planning/preview", { method: "POST", body: formData });
-    const body = await response.json().catch(() => ({}));
-    if (!response.ok) setError(body.error ?? "Falha ao preparar campanha");
-    else { setPreview(body); setFilters({}); }
-    setBusy(false);
+    try {
+      formData.set("day", day); formData.set("template", template);
+      const response = await fetch("/api/planning/preview", { method: "POST", body: formData });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) setError(body.error ?? "Falha ao preparar campanha");
+      else { setPreview(body); setFilters({}); }
+    } catch { setError("Falha de conexao ao preparar a campanha."); }
+    finally { setBusy(false); }
   }
 
   const filteredMessages = preview?.messages.filter((message) => Object.entries(filters).every(([key, value]) => !value || message.segmentos?.[key] === value)) ?? [];

@@ -1,3 +1,5 @@
+import { SubmitButton } from "@/components/submit-button";
+
 export default async function Login({ searchParams }: { searchParams: Promise<{ erro?: string }> }) {
   const params = await searchParams;
   return (
@@ -11,7 +13,7 @@ export default async function Login({ searchParams }: { searchParams: Promise<{ 
         <form action="/api/auth/login" method="post" className="stack">
           <label>E-mail<input name="email" type="email" required autoComplete="email" /></label>
           <label>Senha<input name="password" type="password" required autoComplete="current-password" /></label>
-          <button type="submit">Entrar</button>
+          <SubmitButton idle="Entrar" pending="Entrando..." />
         </form>
         <a className="support-link" href="https://wa.me/5517997423774?text=Ol%C3%A1%2C%20preciso%20de%20ajuda%20para%20acessar%20o%20WhatsApp%20OK." target="_blank" rel="noreferrer">Problemas para entrar? Fale com o administrador</a>
       </section>
