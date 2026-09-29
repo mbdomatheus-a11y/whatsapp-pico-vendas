@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { WEEKDAYS, type PlannedMessage, type PreviewResult, type Weekday } from "@/lib/planning/types";
+import { suggestedCampaignName } from "@/lib/campaigns";
+import { SubmitButton } from "@/components/submit-button";
 
 const DEFAULT_TEMPLATE = "Ola! O pico de vendas da loja {cod_loja} - {nome_loja} nesta {dia} sera das {faixa_pico}. A escala planejada possui {colaboradores_pico} colaboradores com cobertura nesse periodo. Por favor, organize a equipe para maxima cobertura no pico e confirme o recebimento com OK.";
 
@@ -13,6 +15,7 @@ export function CampaignPlanner({ accounts, groupId }: { accounts: { id: string;
   const [busy, setBusy] = useState(false);
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [accountId, setAccountId] = useState(accounts[0]?.id ?? "");
+  const [campaignName, setCampaignName] = useState(() => suggestedCampaignName("SEGUNDA"));
 
   async function prepare(formData: FormData) {
     setBusy(true); setError(""); setPreview(null);
@@ -32,7 +35,7 @@ export function CampaignPlanner({ accounts, groupId }: { accounts: { id: string;
       <label>Conta de envio<select value={accountId} onChange={(event) => setAccountId(event.target.value)} required>{accounts.map((account) => <option key={account.id} value={account.id}>{account.label}</option>)}</select></label>
       <label>Planilha de picos (.xlsx)<input type="file" name="file" accept=".xlsx" required /></label>
       <label>Planilha de segmentacao (.xlsx, opcional)<input type="file" name="segmentationFile" accept=".xlsx" /></label>
-      <label>Dia da semana<select value={day} onChange={(event) => setDay(event.target.value as Weekday)}>{WEEKDAYS.map((item) => <option key={item}>{item}</option>)}</select></label>
+      <label>Dia da semana<select value={day} onChange={(event) => { const next = event.target.value as Weekday; setDay(next); setCampaignName(suggestedCampaignName(next)); }}>{WEEKDAYS.map((item) => <option key={item}>{item}</option>)}</select></label>
       <label>Modelo da mensagem<textarea rows={6} value={template} onChange={(event) => setTemplate(event.target.value)} /></label>
       <p className="token-help">Campos: {'{cod_loja}'}, {'{nome_loja}'}, {'{dia}'}, {'{faixa_pico}'}, {'{colaboradores_pico}'}, {'{regional}'} e {'{ggl}'}.</p>
       <button disabled={busy}>{busy ? "Cruzando dados..." : "Gerar previa segura"}</button>
@@ -45,7 +48,7 @@ export function CampaignPlanner({ accounts, groupId }: { accounts: { id: string;
       <div className="table-wrap"><table><thead><tr><th>Loja</th><th>Faixa</th><th>Equipe no pico</th><th>Mensagem</th></tr></thead><tbody>{filteredMessages.slice(0, 30).map((item: PlannedMessage) => <tr key={`${item.gerente_id}-${item.telefone}`}><td>{item.gerente_id} {item.loja}</td><td>{item.faixa_pico}</td><td>{item.colaboradores_no_pico ?? "Sem escala"}</td><td className="message-preview">{item.mensagem}</td></tr>)}</tbody></table></div>
       {filteredMessages.length > 30 && <p className="muted">Mostrando 30 de {filteredMessages.length} mensagens selecionadas.</p>}
       <form action="/api/campaigns" method="post" encType="multipart/form-data" className="draft-form">
-        <input type="hidden" name="name" value={`Pico ${day}`} />
+        <label>Nome da campanha<input name="name" value={campaignName} onChange={(event) => setCampaignName(event.target.value)} required maxLength={120} /></label>
         <input type="hidden" name="accountId" value={accountId} />
         <input type="hidden" name="groupId" value={groupId} />
         <input type="hidden" name="messages" value={JSON.stringify(queueMessages)} />
@@ -53,7 +56,7 @@ export function CampaignPlanner({ accounts, groupId }: { accounts: { id: string;
         <label>Agendar para, opcional<input type="datetime-local" name="scheduledAt" /></label>
         <label>Anexos, ate 1 PDF e 3 imagens<input type="file" name="attachments" accept="application/pdf,image/jpeg,image/png,image/webp" multiple /></label>
         {queueMessages.length > 250 && <label className="check warning"><input type="checkbox" name="riskAccepted" required />Estou ciente do risco de bloqueio e aceito o fracionamento em lotes de ate 100.</label>}
-        <button type="submit" disabled={!queueMessages.length}>Criar campanha em rascunho</button>
+        {queueMessages.length ? <SubmitButton idle="Criar campanha em rascunho" pending="Criando rascunho..." /> : <button type="button" disabled>Crie a previa primeiro</button>}
         <span>Nenhuma mensagem sera enviada nesta etapa.</span>
       </form>
     </div>}

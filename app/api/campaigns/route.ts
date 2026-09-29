@@ -49,5 +49,5 @@ export async function POST(request: Request) {
     await admin.from("campaign_attachments").insert({ campaign_id: campaign.id, storage_path: path, file_name: file.name, mime_type: file.type, size_bytes: file.size });
   }
   await writeAudit({ actorId: auth.userId, organizationId: auth.access.profile.organization_id, action: scheduledAt ? "campaign_scheduled" : "campaign_created", entityType: "campaign", entityId: campaign.id, metadata: { total: messages.length, confirmationEnabled, attachments: files.map((file) => file.name) } });
-  return NextResponse.redirect(new URL("/dashboard", request.url), 303);
+  return NextResponse.redirect(new URL("/campanhas", request.url), 303);
 }

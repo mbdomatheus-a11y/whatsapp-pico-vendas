@@ -12,15 +12,18 @@ export function QueueMonitor({ campaigns }: { campaigns: Campaign[] }) {
   const [items, setItems] = useState<QueueItem[]>([]);
   const [totals, setTotals] = useState<Record<string, number>>({});
   const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
   const load = useCallback(async () => {
+    setBusy(true);
     const query = campaignId ? `?campaignId=${encodeURIComponent(campaignId)}` : "";
     const response = await fetch(`/api/queue${query}`, { cache: "no-store" }); const body = await response.json().catch(() => ({}));
     if (response.ok) { setItems(body.items ?? []); setTotals(body.totals ?? {}); setError(""); } else setError(body.error ?? "Falha ao consultar a fila");
+    setBusy(false);
   }, [campaignId]);
-  useEffect(() => { void load(); const timer = window.setInterval(load, 4000); const update = () => void load(); window.addEventListener("queue-updated", update); return () => { window.clearInterval(timer); window.removeEventListener("queue-updated", update); }; }, [load]);
+  useEffect(() => { void load(); const timer = window.setInterval(load, 4000); const update = () => void load(); window.addEventListener("queue-updated", update); window.addEventListener("portal-refresh", update); return () => { window.clearInterval(timer); window.removeEventListener("queue-updated", update); window.removeEventListener("portal-refresh", update); }; }, [load]);
 
   return <section className="panel" id="fila">
-    <div className="panel-heading"><div><h2>Fila de envios</h2><p>Acompanhe cada destinatario sem exibir o numero completo ou o texto enviado.</p></div><button className="small secondary" onClick={load}>Atualizar agora</button></div>
+    <div className="panel-heading"><div><h2>Fila de envios</h2><p>Acompanhe cada destinatario sem exibir o numero completo ou o texto enviado.</p></div><button className="small secondary" disabled={busy} onClick={load}>{busy ? "Atualizando..." : "Atualizar agora"}</button></div>
     <label className="queue-filter">Filtrar por campanha<select value={campaignId} onChange={(event) => setCampaignId(event.target.value)}><option value="">Todas as campanhas</option>{campaigns.map((campaign) => <option key={campaign.id} value={campaign.id}>{campaign.name}</option>)}</select></label>
     <div className="summary-grid"><strong>{totals.pendente ?? 0} aguardando autorização</strong><strong>{totals.pronto_para_envio ?? 0} prontas</strong><strong>{totals.processando ?? 0} em andamento</strong><strong>{totals.enviado ?? 0} enviadas</strong><strong>{totals.erro ?? 0} com erro</strong></div>
     {error && <div className="alert error">{error}</div>}

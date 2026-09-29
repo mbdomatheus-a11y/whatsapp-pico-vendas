@@ -12,11 +12,13 @@ export function OperationControls({ campaignId, status, tested, totalMessages }:
   async function run(action: "test" | "authorize" | "pause") {
     setBusy(action);
     setMessage("");
-    const response = await fetch(`/api/campaigns/${campaignId}/${action}`, { method: "POST" });
-    const body = await response.json().catch(() => ({}));
-    setMessage(response.ok ? (action === "test" ? `Teste enviado para ${body.sent ?? 1} integrante(s)` : "Atualizado") : body.error ?? "Falha na operacao");
-    setBusy(null);
-    router.refresh();
+    try {
+      const response = await fetch(`/api/campaigns/${campaignId}/${action}`, { method: "POST" });
+      const body = await response.json().catch(() => ({}));
+      setMessage(response.ok ? (action === "test" ? `Teste enviado para ${body.sent ?? 1} integrante(s)` : "Atualizado") : body.error ?? "Falha na operacao");
+      if (response.ok) router.refresh();
+    } catch { setMessage("Falha de conexao. Tente novamente."); }
+    finally { setBusy(null); }
   }
 
   async function startSending() {
@@ -37,11 +39,11 @@ export function OperationControls({ campaignId, status, tested, totalMessages }:
   }
 
   return <div className="actions">
-    {status === "rascunho" && !tested && <button className="small secondary" disabled={!!busy || sending} onClick={() => run("test")}>1. Enviar teste</button>}
-    {status === "rascunho" && tested && <button className="small" disabled={!!busy || sending} onClick={() => run("authorize")}>2. Autorizar campanha</button>}
-    {status === "pausada" && <button className="small" disabled={!!busy || sending} onClick={() => run("authorize")}>Retomar e autorizar</button>}
-    {(status === "autorizada" || status === "processando") && <button className="small" disabled={sending || !!busy} onClick={startSending}>{sending ? "Enviando..." : status === "autorizada" ? "3. Iniciar envios" : "Continuar envios"}</button>}
-    {(status === "autorizada" || status === "processando") && <button className="small danger" disabled={!!busy} onClick={() => run("pause")}>Pausar campanha</button>}
+    {status === "rascunho" && !tested && <button className="small secondary" disabled={!!busy || sending} onClick={() => run("test")}>{busy === "test" ? "Enviando teste..." : "1. Enviar teste"}</button>}
+    {status === "rascunho" && tested && <button className="small" disabled={!!busy || sending} onClick={() => run("authorize")}>{busy === "authorize" ? "Autorizando..." : "2. Autorizar campanha"}</button>}
+    {status === "pausada" && <button className="small" disabled={!!busy || sending} onClick={() => run("authorize")}>{busy === "authorize" ? "Retomando..." : "Retomar e autorizar"}</button>}
+    {(status === "autorizada" || status === "processando") && <button className="small whatsapp-action" disabled={sending || !!busy} onClick={startSending}>{sending ? "Enviando..." : status === "autorizada" ? "3. Iniciar envios" : "Continuar envios"}</button>}
+    {(status === "autorizada" || status === "processando") && <button className="small danger" disabled={!!busy || sending} onClick={() => run("pause")}>{busy === "pause" ? "Pausando..." : "Pausar campanha"}</button>}
     {message && <span className="action-message">{message}</span>}
   </div>;
 }
@@ -53,14 +55,16 @@ export function QueueControls() {
   async function checkHealth() {
     setBusy(true);
     setMessage("");
-    const response = await fetch("/api/health");
-    const body = await response.json().catch(() => ({}));
-    setMessage(response.ok ? `Gateway online, WhatsApp: ${body.whatsapp}` : body.detail ?? body.error ?? "Gateway offline");
-    setBusy(false);
-    router.refresh();
+    try {
+      const response = await fetch("/api/health");
+      const body = await response.json().catch(() => ({}));
+      setMessage(response.ok ? `Gateway online, WhatsApp: ${body.whatsapp}` : body.detail ?? body.error ?? "Gateway offline");
+      router.refresh();
+    } catch { setMessage("Nao foi possivel verificar a conexao."); }
+    finally { setBusy(false); }
   }
   return <div className="queue-controls">
-    <button className="secondary" disabled={busy} onClick={checkHealth}>Verificar conexao</button>
+    <button className="secondary" disabled={busy} onClick={checkHealth}>{busy ? "Verificando conexao..." : "Verificar conexao"}</button>
     {message && <span>{message}</span>}
   </div>;
 }
