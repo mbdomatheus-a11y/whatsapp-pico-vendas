@@ -14,6 +14,10 @@ MVP semiautomatico baseado na arquitetura aprovada: painel Next.js, autenticacao
 - Health check separado entre gateway e sessao do WhatsApp.
 - Compose local sem publicar banco ou Redis e com a API ligada apenas em `127.0.0.1`.
 - Scripts de backup, restore e diagnostico.
+- Importacao da planilha de pico em `.xlsx`, com leitura do dia da semana na linha superior.
+- Cruzamento server-side com a API corporativa de escalas, sem expor a chave no navegador.
+- Previa por loja com faixa de pico, cobertura planejada e mensagem final.
+- Criacao somente em rascunho: o cruzamento nunca autoriza nem dispara mensagens.
 
 ## Custo zero e limitacoes
 
@@ -31,6 +35,17 @@ A Evolution API 2.4 passou a exigir ativacao de licenca. O compose usa temporari
 6. Copie `gateway/.env.example` para `gateway/.env`, troque todos os segredos e suba com `docker compose up -d`.
 7. Sem dominio proprio, inicie o `cloudflared` do compose como Quick Tunnel e use a URL `trycloudflare.com` gerada nas variaveis do painel. Esse endereco muda quando o conteiner do tunnel e recriado. Para um endereco permanente, adicione futuramente um dominio ao Cloudflare Zero Trust e proteja-o com Access.
 8. Crie a instancia indicada por `EVOLUTION_INSTANCE`, leia o QR Code e confirme o estado conectado.
+9. Configure `ESCALA_API_URL` e `ESCALA_API_KEY` apenas no ambiente do servidor.
+
+## Planejamento por pico e escala
+
+1. No painel, abra `Planejar pico de vendas` e envie a planilha `.xlsx`.
+2. Selecione o dia da semana. O sistema usa os campos `Ggl`, `Regional`, `cod_loja`, `nome_loja`, `TELEFONE` e a coluna `Faixa_Horario` abaixo do dia escolhido.
+3. Revise a previa, a quantidade de colaboradores com cobertura no pico e todos os alertas.
+4. Clique em `Criar campanha em rascunho` somente depois da conferencia.
+5. O fluxo de teste e autorizacao continua separado e obrigatorio.
+
+A API de escalas atualmente devolve no maximo 1000 registros historicos por consulta. Para evitar mensagens incorretas, lojas sem escala encontrada nessa resposta sao excluidas do rascunho e aparecem como alerta. Para cobrir toda a rede com garantia, a API deve oferecer paginacao, consulta em lote ou um endpoint de estado atual por loja.
 
 ## Operacao segura
 

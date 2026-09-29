@@ -1,5 +1,6 @@
 import { requireUser } from "@/lib/auth";
 import { OperationControls, QueueControls } from "@/components/operation-controls";
+import { CampaignPlanner } from "@/components/campaign-planner";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +36,7 @@ export default async function Dashboard() {
           {!campaigns?.length && <tr><td colSpan={5} className="empty">Nenhuma campanha criada.</td></tr>}
         </tbody></table></div>
       </section>
+      <CampaignPlanner />
       <section className="panel" id="nova">
         <div className="panel-heading"><div><h2>Nova campanha</h2><p>Cole uma lista JSON para criar um rascunho. Nenhuma mensagem sera enviada.</p></div></div>
         <form action="/api/campaigns" method="post" className="stack">

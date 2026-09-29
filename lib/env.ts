@@ -21,5 +21,7 @@ export function serverEnv() {
     cfAccessClientId: process.env.CF_ACCESS_CLIENT_ID,
     cfAccessClientSecret: process.env.CF_ACCESS_CLIENT_SECRET,
     authorizedTestNumber: process.env.AUTHORIZED_TEST_NUMBER,
+    escalaApiUrl: process.env.ESCALA_API_URL,
+    escalaApiKey: process.env.ESCALA_API_KEY,
   };
 }
