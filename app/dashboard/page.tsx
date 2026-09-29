@@ -2,6 +2,18 @@ import { requireUser } from "@/lib/auth";
 import { OperationControls, QueueControls } from "@/components/operation-controls";
 import { CampaignPlanner } from "@/components/campaign-planner";
 import { AccountsManager } from "@/components/accounts-manager";
+import { QueueMonitor } from "@/components/queue-monitor";
+
+function campaignStage(status: string, tested: boolean) {
+  if (status === "rascunho" && !tested) return "1. Aguardando teste";
+  if (status === "rascunho" && tested) return "2. Aguardando autorização";
+  if (status === "autorizada") return "3. Autorizada, pronta para iniciar";
+  if (status === "processando") return "4. Envios em andamento";
+  if (status === "pausada") return "Pausada";
+  if (status === "concluida") return "Concluída";
+  if (status === "erro") return "Concluída com erros";
+  return status;
+}
 
 export const dynamic = "force-dynamic";
 
@@ -35,10 +47,11 @@ export default async function Dashboard() {
       <section className="panel">
         <div className="panel-heading"><div><h2>Campanhas</h2><p>Revise, teste e autorize cada lote.</p></div><a className="button" href="#nova">Nova campanha</a></div>
         <div className="table-wrap"><table><thead><tr><th>Campanha</th><th>Status</th><th>Mensagens</th><th>Criada em</th><th>Acoes</th></tr></thead><tbody>
-          {(campaigns ?? []).map((campaign) => <tr key={campaign.id}><td>{campaign.name}</td><td><span className={`badge ${campaign.status}`}>{campaign.status}</span></td><td>{campaign.total_messages}</td><td>{new Date(campaign.created_at).toLocaleString("pt-BR")}</td><td><OperationControls campaignId={campaign.id} status={campaign.status} tested={!!campaign.test_sent_at} /></td></tr>)}
+          {(campaigns ?? []).map((campaign) => <tr key={campaign.id}><td>{campaign.name}</td><td><span className={`badge ${campaign.status}`}>{campaignStage(campaign.status, !!campaign.test_sent_at)}</span></td><td>{campaign.total_messages}</td><td>{new Date(campaign.created_at).toLocaleString("pt-BR")}</td><td><OperationControls campaignId={campaign.id} status={campaign.status} tested={!!campaign.test_sent_at} /></td></tr>)}
           {!campaigns?.length && <tr><td colSpan={5} className="empty">Nenhuma campanha criada.</td></tr>}
         </tbody></table></div>
       </section>
+      <QueueMonitor campaigns={(campaigns ?? []).map(({ id, name }) => ({ id, name }))} />
       <CampaignPlanner accounts={(accounts ?? []).map(({ id, label }) => ({ id, label }))} />
       <section className="panel" id="nova">
         <div className="panel-heading"><div><h2>Nova campanha</h2><p>Cole uma lista JSON para criar um rascunho. Nenhuma mensagem sera enviada.</p></div></div>
