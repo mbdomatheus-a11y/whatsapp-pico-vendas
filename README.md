@@ -29,7 +29,7 @@ A Evolution API 2.4 passou a exigir ativacao de licenca. O compose usa temporari
 4. Instale dependencias com `pnpm install` e rode `pnpm dev`.
 5. Na estacao Ubuntu, copie a pasta `gateway` para `/opt/whatsapp-gateway`.
 6. Copie `gateway/.env.example` para `gateway/.env`, troque todos os segredos e suba com `docker compose up -d`.
-7. No Cloudflare Zero Trust, crie um Tunnel apontando o hostname para `http://evolution-api:8080`, proteja-o com Access e configure um Service Token nas variaveis do painel.
+7. Sem dominio proprio, inicie o `cloudflared` do compose como Quick Tunnel e use a URL `trycloudflare.com` gerada nas variaveis do painel. Esse endereco muda quando o conteiner do tunnel e recriado. Para um endereco permanente, adicione futuramente um dominio ao Cloudflare Zero Trust e proteja-o com Access.
 8. Crie a instancia indicada por `EVOLUTION_INSTANCE`, leia o QR Code e confirme o estado conectado.
 
 ## Operacao segura

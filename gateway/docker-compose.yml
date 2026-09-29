@@ -45,7 +45,7 @@ services:
     container_name: cloudflared
     restart: unless-stopped
     depends_on: [evolution-api]
-    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    command: tunnel --no-autoupdate --url http://evolution-api:8080
     networks: [gateway]
 
 volumes:

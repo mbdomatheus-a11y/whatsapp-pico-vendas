@@ -4,6 +4,7 @@ node_modules/
 .env.local
 gateway/.env
 gateway/backups/
+gateway/.runtime/
 *.log
 *.tsbuildinfo
 .DS_Store
