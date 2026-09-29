@@ -16,6 +16,7 @@ export async function POST(request: Request) {
   const preferredGroup = auth.access.preference?.selected_group_id ?? auth.access.groups[0]?.group_id;
   const groupId = String(form.get("groupId") ?? preferredGroup ?? "");
   const confirmationEnabled = form.get("confirmationEnabled") === "on";
+  const planningSessionId = String(form.get("planningSessionId") ?? "").trim();
   const scheduledLocal = String(form.get("scheduledAt") ?? "").trim();
   const scheduledAt = scheduledLocal ? new Date(`${scheduledLocal}:00-03:00`) : null;
   let messages: InputMessage[];
@@ -32,6 +33,10 @@ export async function POST(request: Request) {
   const { data: account } = await auth.supabase.from("whatsapp_accounts").select("id").eq("id", accountId).eq("enabled", true).single();
   if (!account) return NextResponse.json({ error: "Conta de envio invalida" }, { status: 400 });
   const admin = createAdminClient();
+  if (planningSessionId) {
+    const { data: planning } = await admin.from("planning_sessions").select("id,group_id,status").eq("id", planningSessionId).maybeSingle();
+    if (!planning || planning.group_id !== groupId || planning.status !== "preparada") return NextResponse.json({ error: "Preparacao salva invalida ou ja utilizada" }, { status: 409 });
+  }
   const { data: settings } = await admin.from("system_settings").select("delay_min_seconds,delay_max_seconds,batch_size,batch_pause_minutes").eq("organization_id", auth.access.profile.organization_id).single();
   const { data: campaign, error } = await admin.from("campaigns").insert({ name, created_by: auth.userId, total_messages: messages.length, whatsapp_account_id: accountId, group_id: groupId, scheduled_at: scheduledAt?.toISOString() ?? null, confirmation_enabled: confirmationEnabled, delay_min_seconds: settings?.delay_min_seconds ?? 1, delay_max_seconds: settings?.delay_max_seconds ?? 30, batch_size: messages.length > 250 ? Math.min(settings?.batch_size ?? 100, 100) : settings?.batch_size ?? 100, batch_pause_minutes: settings?.batch_pause_minutes ?? 10 }).select("id").single();
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
@@ -49,5 +54,6 @@ export async function POST(request: Request) {
     await admin.from("campaign_attachments").insert({ campaign_id: campaign.id, storage_path: path, file_name: file.name, mime_type: file.type, size_bytes: file.size });
   }
   await writeAudit({ actorId: auth.userId, organizationId: auth.access.profile.organization_id, action: scheduledAt ? "campaign_scheduled" : "campaign_created", entityType: "campaign", entityId: campaign.id, metadata: { total: messages.length, confirmationEnabled, attachments: files.map((file) => file.name) } });
+  if (planningSessionId) await admin.from("planning_sessions").update({ status: "convertida", campaign_id: campaign.id, updated_at: new Date().toISOString() }).eq("id", planningSessionId);
   return NextResponse.redirect(new URL("/campanhas", request.url), 303);
 }

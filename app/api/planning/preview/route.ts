@@ -4,6 +4,8 @@ import { parsePeakWorkbook } from "@/lib/planning/spreadsheet";
 import { ScheduleDirectory } from "@/lib/planning/schedule-api";
 import { WEEKDAYS, type Weekday, type PlannedMessage } from "@/lib/planning/types";
 import { parseSegmentationWorkbook } from "@/lib/planning/segmentation";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { writeAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
 
@@ -17,16 +19,24 @@ function render(template: string, values: Record<string, string | number>) {
 export async function POST(request: Request) {
   const auth = await requireApiUser();
   if (!auth) return NextResponse.json({ error: "Nao autorizado" }, { status: 401 });
+  if (!["master","admin","operador"].includes(auth.access.profile.role)) return NextResponse.json({ error: "Seu perfil e somente consulta" }, { status: 403 });
   try {
     const form = await request.formData();
     const file = form.get("file");
     const segmentationFile = form.get("segmentationFile");
     const day = String(form.get("day") ?? "") as Weekday;
     const template = String(form.get("template") ?? DEFAULT_TEMPLATE).trim();
+    const accountId = String(form.get("accountId") ?? "");
+    const groupId = String(form.get("groupId") ?? "");
+    const name = String(form.get("name") ?? "").trim();
     if (!(file instanceof File) || !file.name.toLowerCase().endsWith(".xlsx")) throw new Error("Envie uma planilha no formato .xlsx");
     if (file.size > 8 * 1024 * 1024) throw new Error("A planilha deve ter no maximo 8 MB");
     if (!WEEKDAYS.includes(day)) throw new Error("Dia da semana invalido");
     if (!template || template.length > 3000) throw new Error("Modelo de mensagem invalido");
+    if (!name || name.length > 120) throw new Error("Nome da preparacao invalido");
+    if (!auth.access.groups.some((group) => group.group_id === groupId)) throw new Error("Grupo invalido");
+    const { data: account } = await auth.supabase.from("whatsapp_accounts").select("id").eq("id", accountId).eq("enabled", true).maybeSingle();
+    if (!account) throw new Error("Conta de envio invalida");
 
     const parsed = await parsePeakWorkbook(Buffer.from(await file.arrayBuffer()), day);
     const segmentation = segmentationFile instanceof File && segmentationFile.size > 0
@@ -82,7 +92,27 @@ export async function POST(request: Request) {
     }
     const facets: Record<string, string[]> = {};
     for (const message of messages) for (const [key, value] of Object.entries(message.segmentos ?? {})) if (value) facets[key] = [...new Set([...(facets[key] ?? []), value])].sort();
-    return NextResponse.json({ messages, warnings, totalRows: parsed.rows.length, matchedStores, facets, defaultTemplate: DEFAULT_TEMPLATE });
+    const preview = { messages, warnings, totalRows: parsed.rows.length, matchedStores, facets };
+    const admin = createAdminClient();
+    const { data: settings } = await admin.from("system_settings").select("retention_days").eq("organization_id", auth.access.profile.organization_id).single();
+    const retentionDays = settings?.retention_days ?? 30;
+    const expiresAt = retentionDays === 0 ? null : new Date(Date.now() + retentionDays * 86400000).toISOString();
+    const { data: session, error: saveError } = await admin.from("planning_sessions").insert({
+      organization_id: auth.access.profile.organization_id,
+      group_id: groupId,
+      created_by: auth.userId,
+      whatsapp_account_id: accountId,
+      name,
+      weekday: day,
+      message_template: template,
+      source_file_name: file.name.slice(0, 180),
+      segmentation_file_name: segmentationFile instanceof File && segmentationFile.size > 0 ? segmentationFile.name.slice(0, 180) : null,
+      preview_payload: preview,
+      expires_at: expiresAt,
+    }).select("id").single();
+    if (saveError || !session) throw new Error(saveError?.message ?? "Nao foi possivel salvar a preparacao");
+    await writeAudit({ actorId: auth.userId, organizationId: auth.access.profile.organization_id, action: "planning_session_created", entityType: "planning_session", entityId: session.id, metadata: { name, day, totalRows: parsed.rows.length, messages: messages.length, hasSegmentation: !!(segmentationFile instanceof File && segmentationFile.size > 0) } });
+    return NextResponse.json({ sessionId: session.id, saved: true });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Falha ao preparar campanha" }, { status: 400 });
   }

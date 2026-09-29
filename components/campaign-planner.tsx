@@ -1,66 +1,49 @@
 "use client";
 
 import { useState } from "react";
-import { WEEKDAYS, type PlannedMessage, type PreviewResult, type Weekday } from "@/lib/planning/types";
+import { useRouter } from "next/navigation";
+import { WEEKDAYS, type Weekday } from "@/lib/planning/types";
 import { suggestedCampaignName } from "@/lib/campaigns";
-import { SubmitButton } from "@/components/submit-button";
 
 const DEFAULT_TEMPLATE = "Ola! O pico de vendas da loja {cod_loja} - {nome_loja} nesta {dia} sera das {faixa_pico}. A escala planejada possui {colaboradores_pico} colaboradores com cobertura nesse periodo. Por favor, organize a equipe para maxima cobertura no pico e confirme o recebimento com OK.";
 
 export function CampaignPlanner({ accounts, groupId }: { accounts: { id: string; label: string }[]; groupId: string }) {
+  const router = useRouter();
   const [day, setDay] = useState<Weekday>("SEGUNDA");
   const [template, setTemplate] = useState(DEFAULT_TEMPLATE);
-  const [preview, setPreview] = useState<PreviewResult | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [filters, setFilters] = useState<Record<string, string>>({});
   const [accountId, setAccountId] = useState(accounts[0]?.id ?? "");
-  const [campaignName, setCampaignName] = useState(() => suggestedCampaignName("SEGUNDA"));
+  const [name, setName] = useState(() => suggestedCampaignName("SEGUNDA"));
+  const [peakName, setPeakName] = useState("");
+  const [segmentationName, setSegmentationName] = useState("");
 
   async function prepare(formData: FormData) {
-    setBusy(true); setError(""); setPreview(null);
+    setBusy(true); setError("");
     try {
-      formData.set("day", day); formData.set("template", template);
+      formData.set("day", day); formData.set("template", template); formData.set("accountId", accountId); formData.set("groupId", groupId); formData.set("name", name);
       const response = await fetch("/api/planning/preview", { method: "POST", body: formData });
       const body = await response.json().catch(() => ({}));
-      if (!response.ok) setError(body.error ?? "Falha ao preparar campanha");
-      else { setPreview(body); setFilters({}); }
+      if (!response.ok) setError(body.error ?? "Falha ao importar e salvar a preparacao");
+      else router.push(`/planejamento/${body.sessionId}`);
     } catch { setError("Falha de conexao ao preparar a campanha."); }
     finally { setBusy(false); }
   }
 
-  const filteredMessages = preview?.messages.filter((message) => Object.entries(filters).every(([key, value]) => !value || message.segmentos?.[key] === value)) ?? [];
-  const queueMessages = filteredMessages.map(({ gerente_id, telefone, mensagem }) => ({ gerente_id, telefone, mensagem }));
-  return <section className="panel" id="planejamento">
-    <div className="panel-heading"><div><h2>Planejar pico de vendas</h2><p>Carregue a planilha, cruze com a escala e revise antes de criar o rascunho.</p></div></div>
-    <form action={prepare} className="stack">
-      <label>Conta de envio<select value={accountId} onChange={(event) => setAccountId(event.target.value)} required>{accounts.map((account) => <option key={account.id} value={account.id}>{account.label}</option>)}</select></label>
-      <label>Planilha de picos (.xlsx)<input type="file" name="file" accept=".xlsx" required /></label>
-      <label>Planilha de segmentacao (.xlsx, opcional)<input type="file" name="segmentationFile" accept=".xlsx" /></label>
-      <label>Dia da semana<select value={day} onChange={(event) => { const next = event.target.value as Weekday; setDay(next); setCampaignName(suggestedCampaignName(next)); }}>{WEEKDAYS.map((item) => <option key={item}>{item}</option>)}</select></label>
-      <label>Modelo da mensagem<textarea rows={6} value={template} onChange={(event) => setTemplate(event.target.value)} /></label>
-      <p className="token-help">Campos: {'{cod_loja}'}, {'{nome_loja}'}, {'{dia}'}, {'{faixa_pico}'}, {'{colaboradores_pico}'}, {'{regional}'} e {'{ggl}'}.</p>
-      <button disabled={busy}>{busy ? "Cruzando dados..." : "Gerar previa segura"}</button>
-      {error && <div className="alert error">{error}</div>}
-    </form>
-    {preview && <div className="preview-block">
-      <div className="summary-grid"><strong>{filteredMessages.length} mensagens selecionadas</strong><strong>{preview.matchedStores} escalas encontradas</strong><strong>{preview.warnings.length} alertas</strong></div>
-      {Object.keys(preview.facets ?? {}).length > 0 && <div className="filter-grid">{Object.entries(preview.facets).map(([key, values]) => <label key={key}>{key}<select value={filters[key] ?? ""} onChange={(event) => setFilters((current) => ({ ...current, [key]: event.target.value }))}><option value="">Todos</option>{values.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>)}</div>}
-      {preview.warnings.length > 0 && <details><summary>Ver alertas</summary><ul>{preview.warnings.slice(0, 50).map((warning, index) => <li key={index}>{warning}</li>)}</ul></details>}
-      <div className="table-wrap"><table><thead><tr><th>Loja</th><th>Faixa</th><th>Equipe no pico</th><th>Mensagem</th></tr></thead><tbody>{filteredMessages.slice(0, 30).map((item: PlannedMessage) => <tr key={`${item.gerente_id}-${item.telefone}`}><td>{item.gerente_id} {item.loja}</td><td>{item.faixa_pico}</td><td>{item.colaboradores_no_pico ?? "Sem escala"}</td><td className="message-preview">{item.mensagem}</td></tr>)}</tbody></table></div>
-      {filteredMessages.length > 30 && <p className="muted">Mostrando 30 de {filteredMessages.length} mensagens selecionadas.</p>}
-      <form action="/api/campaigns" method="post" encType="multipart/form-data" className="draft-form">
-        <label>Nome da campanha<input name="name" value={campaignName} onChange={(event) => setCampaignName(event.target.value)} required maxLength={120} /></label>
-        <input type="hidden" name="accountId" value={accountId} />
-        <input type="hidden" name="groupId" value={groupId} />
-        <input type="hidden" name="messages" value={JSON.stringify(queueMessages)} />
-        <label className="check"><input type="checkbox" name="confirmationEnabled" />Incluir link individual de confirmacao</label>
-        <label>Agendar para, opcional<input type="datetime-local" name="scheduledAt" /></label>
-        <label>Anexos, ate 1 PDF e 3 imagens<input type="file" name="attachments" accept="application/pdf,image/jpeg,image/png,image/webp" multiple /></label>
-        {queueMessages.length > 250 && <label className="check warning"><input type="checkbox" name="riskAccepted" required />Estou ciente do risco de bloqueio e aceito o fracionamento em lotes de ate 100.</label>}
-        {queueMessages.length ? <SubmitButton idle="Criar campanha em rascunho" pending="Criando rascunho..." /> : <button type="button" disabled>Crie a previa primeiro</button>}
-        <span>Nenhuma mensagem sera enviada nesta etapa.</span>
+  return <>
+    <ol className="flow-steps" aria-label="Etapas da preparacao"><li className="active"><span>1</span>Importar dados</li><li><span>2</span>Segmentar</li><li><span>3</span>Revisar previa</li><li><span>4</span>Criar campanha</li></ol>
+    <section className="panel import-panel">
+      <div className="panel-heading"><div><p className="step-kicker">Etapa 1 de 4</p><h2>Importar e salvar os dados</h2><p>Os arquivos sao processados e somente os dados normalizados ficam salvos por 30 dias, conforme a retencao configurada.</p></div></div>
+      <form action={prepare} className="stack">
+        <div className="form-grid"><label>Nome da preparacao<input value={name} onChange={(event) => setName(event.target.value)} required maxLength={120}/></label><label>Dia da semana<select value={day} onChange={(event) => { const next = event.target.value as Weekday; setDay(next); setName(suggestedCampaignName(next)); }}>{WEEKDAYS.map((item) => <option key={item}>{item}</option>)}</select></label><label>Conta de envio<select value={accountId} onChange={(event) => setAccountId(event.target.value)} required>{accounts.map((account) => <option key={account.id} value={account.id}>{account.label}</option>)}</select></label></div>
+        <div className="import-grid">
+          <label className={`upload-card ${peakName ? "complete" : ""}`}><span className="upload-step">Obrigatorio</span><strong>Planilha de picos</strong><small>Formato .xlsx, ate 8 MB</small><input type="file" name="file" accept=".xlsx" required onChange={(event) => setPeakName(event.target.files?.[0]?.name ?? "")}/><em>{peakName || "Selecione o arquivo principal"}</em></label>
+          <label className={`upload-card ${segmentationName ? "complete" : ""}`}><span className="upload-step">Opcional</span><strong>Planilha de segmentacao</strong><small>Primeira coluna COD ou COD_LOJA</small><input type="file" name="segmentationFile" accept=".xlsx" onChange={(event) => setSegmentationName(event.target.files?.[0]?.name ?? "")}/><em>{segmentationName || "Adicione regional, estado e outros recortes"}</em></label>
+        </div>
+        <details className="template-editor"><summary>Editar modelo da mensagem</summary><label>Modelo<textarea rows={6} value={template} onChange={(event) => setTemplate(event.target.value)}/></label><p className="token-help">Campos: {'{cod_loja}'}, {'{nome_loja}'}, {'{dia}'}, {'{faixa_pico}'}, {'{colaboradores_pico}'}, {'{regional}'} e {'{ggl}'}.</p></details>
+        <div className="flow-action"><div><strong>O que acontece agora?</strong><p>O portal cruza as escalas, salva a preparacao e abre a segmentacao em uma nova tela. Nenhuma mensagem sera enviada.</p></div><button disabled={busy || !accountId}>{busy ? "Importando, cruzando e salvando..." : "Gerar previa e continuar"}</button></div>
+        {error && <div className="alert error">{error}</div>}
       </form>
-    </div>}
-  </section>;
+    </section>
+  </>;
 }

@@ -7,6 +7,8 @@ export async function POST() {
   const { data: expired } = await admin.from("communication_logs").select("id,campaign_id").eq("organization_id", auth.access.profile.organization_id).not("expires_at", "is", null).lt("expires_at", now).limit(1000);
   if (expired?.length) await admin.from("communication_logs").delete().in("id", expired.map((item) => item.id));
   await admin.from("read_confirmations").delete().lt("expires_at", now);
+  const { data: expiredPlanning } = await admin.from("planning_sessions").select("id").eq("organization_id", auth.access.profile.organization_id).not("expires_at", "is", null).lt("expires_at", now).limit(500);
+  if (expiredPlanning?.length) await admin.from("planning_sessions").delete().in("id", expiredPlanning.map((item) => item.id));
   const campaignIds = [...new Set((expired ?? []).map((item) => item.campaign_id).filter(Boolean))];
   for (const campaignId of campaignIds) {
     const { count } = await admin.from("communication_logs").select("id", { count: "exact", head: true }).eq("campaign_id", campaignId);
@@ -17,5 +19,5 @@ export async function POST() {
       await admin.from("campaign_attachments").delete().eq("campaign_id", campaignId);
     }
   }
-  return NextResponse.json({ removedLogs: expired?.length ?? 0 });
+  return NextResponse.json({ removedLogs: expired?.length ?? 0, removedPlanningSessions: expiredPlanning?.length ?? 0 });
 }
