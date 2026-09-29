@@ -1,0 +1,56 @@
+services:
+  evolution-postgres:
+    image: postgres:15.14-alpine
+    container_name: evolution_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DATABASE}
+      POSTGRES_USER: ${POSTGRES_USERNAME}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes: [postgres_data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USERNAME} -d ${POSTGRES_DATABASE}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [gateway]
+
+  redis:
+    image: redis:7.4.5-alpine
+    container_name: evolution_redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes: [redis_data:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [gateway]
+
+  evolution-api:
+    image: evoapicloud/evolution-api:v2.3.6
+    container_name: evolution_api
+    restart: unless-stopped
+    depends_on:
+      evolution-postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    env_file: [.env]
+    volumes: [evolution_instances:/evolution/instances]
+    ports: ["127.0.0.1:8080:8080"]
+    networks: [gateway]
+
+  cloudflared:
+    image: cloudflare/cloudflared:2026.9.1
+    container_name: cloudflared
+    restart: unless-stopped
+    depends_on: [evolution-api]
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    networks: [gateway]
+
+volumes:
+  postgres_data:
+  redis_data:
+  evolution_instances:
+networks:
+  gateway: { driver: bridge }

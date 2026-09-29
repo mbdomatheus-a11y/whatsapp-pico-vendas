@@ -1,0 +1,11 @@
+node_modules/
+.next/
+.env
+.env.local
+gateway/.env
+gateway/backups/
+*.log
+*.tsbuildinfo
+.DS_Store
+.qa/
+Arquitetura_*.docx
