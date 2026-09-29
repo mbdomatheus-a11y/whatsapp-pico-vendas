@@ -17,13 +17,18 @@ export async function POST(request: Request) {
   const groupId = String(form.get("groupId") ?? preferredGroup ?? "");
   const confirmationEnabled = form.get("confirmationEnabled") === "on";
   const planningSessionId = String(form.get("planningSessionId") ?? "").trim();
+  const scheduleMode = String(form.get("scheduleMode") ?? "").trim();
   const scheduledLocal = String(form.get("scheduledAt") ?? "").trim();
-  const scheduledAt = scheduledLocal ? new Date(`${scheduledLocal}:00-03:00`) : null;
+  const scheduleRequested = scheduleMode === "scheduled" || (!scheduleMode && !!scheduledLocal);
+  const normalizedSchedule = scheduledLocal && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(scheduledLocal)
+    ? `${scheduledLocal}${scheduledLocal.length === 16 ? ":00" : ""}-03:00` : "";
+  const scheduledAt = scheduleRequested && normalizedSchedule ? new Date(normalizedSchedule) : null;
   let messages: InputMessage[];
   try { messages = JSON.parse(String(form.get("messages") ?? "[]")); } catch { return NextResponse.json({ error: "JSON invalido" }, { status: 400 }); }
   if (!name || !accountId || !Array.isArray(messages) || !messages.length || messages.length > 500) return NextResponse.json({ error: "Campanha invalida" }, { status: 400 });
   if (!auth.access.groups.some((group) => group.group_id === groupId)) return NextResponse.json({ error: "Grupo invalido" }, { status: 400 });
-  if (scheduledAt && (Number.isNaN(scheduledAt.getTime()) || scheduledAt.getTime() <= Date.now())) return NextResponse.json({ error: "O agendamento precisa estar no futuro" }, { status: 400 });
+  if (scheduleRequested && !scheduledAt) return NextResponse.json({ error: "Informe uma data e um horario validos para o agendamento" }, { status: 400 });
+  if (scheduledAt && (Number.isNaN(scheduledAt.getTime()) || scheduledAt.getTime() < Date.now() + 5 * 60_000)) return NextResponse.json({ error: "Escolha um horario de Brasilia com pelo menos 5 minutos de antecedencia" }, { status: 400 });
   if (messages.length > 250 && form.get("riskAccepted") !== "on") return NextResponse.json({ error: "Confirme o fracionamento e o risco de bloqueio para campanhas acima de 250 mensagens" }, { status: 400 });
   if (messages.some((m) => !m.gerente_id || !phonePattern.test(m.telefone) || !m.mensagem?.trim())) return NextResponse.json({ error: "Mensagem invalida" }, { status: 400 });
   const files = form.getAll("attachments").filter((item): item is File => item instanceof File && item.size > 0);
@@ -55,5 +60,6 @@ export async function POST(request: Request) {
   }
   await writeAudit({ actorId: auth.userId, organizationId: auth.access.profile.organization_id, action: scheduledAt ? "campaign_scheduled" : "campaign_created", entityType: "campaign", entityId: campaign.id, metadata: { total: messages.length, confirmationEnabled, attachments: files.map((file) => file.name) } });
   if (planningSessionId) await admin.from("planning_sessions").update({ status: "convertida", campaign_id: campaign.id, updated_at: new Date().toISOString() }).eq("id", planningSessionId);
+  if (request.headers.get("accept")?.includes("application/json")) return NextResponse.json({ ok: true, campaignId: campaign.id, redirectTo: "/campanhas" });
   return NextResponse.redirect(new URL("/campanhas", request.url), 303);
 }

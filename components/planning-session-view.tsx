@@ -1,7 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
 import type { PreviewResult } from "@/lib/planning/types";
-import { SubmitButton } from "@/components/submit-button";
+import { CampaignDraftForm } from "@/components/campaign-draft-form";
 
 type SavedSession = { id: string; name: string; weekday: string; status: string; group_id: string; whatsapp_account_id: string; source_file_name: string; segmentation_file_name?: string | null; selected_filters: Record<string,string>; preview_payload: PreviewResult; use_schedule?: boolean; expires_at?: string | null; campaign_id?: string | null; accountLabel?: string };
 
@@ -29,9 +29,6 @@ export function PlanningSessionView({ session }: { session: SavedSession }) {
       {session.preview_payload.warnings.length > 0 && <details><summary>Ver alertas da importacao</summary><ul>{session.preview_payload.warnings.slice(0,50).map((warning,index) => <li key={index}>{warning}</li>)}</ul></details>}
       <div className="table-wrap"><table><thead><tr><th>Destinatario</th><th>Faixa</th>{useSchedule && <th>Equipe</th>}<th>Mensagem</th></tr></thead><tbody>{filtered.slice(0,30).map((item) => <tr key={`${item.gerente_id}-${item.telefone}`}><td>{item.gerente_id}<br/><span className="muted">{item.loja}</span></td><td>{item.faixa_pico}</td>{useSchedule && <td>{item.colaboradores_no_pico ?? "Sem escala"}</td>}<td className="message-preview">{item.mensagem}</td></tr>)}</tbody></table></div>{filtered.length > 30 && <p className="muted">Mostrando 30 de {filtered.length} mensagens.</p>}
     </section>
-    {session.status === "convertida" ? <section className="panel"><div className="confirmation-result">Esta preparacao ja foi convertida em campanha.</div>{session.campaign_id && <a className="button secondary" href="/campanhas">Abrir campanhas</a>}</section> : <section className="panel next-step-panel"><div><p className="step-kicker">Etapa 4</p><h2>Criar campanha em rascunho</h2><p className="muted">Nada sera enviado. Depois, a campanha ainda exigira teste, autorizacao e inicio manual.</p></div><form action="/api/campaigns" method="post" encType="multipart/form-data" className="stack">
-      <label>Nome da campanha<input name="name" defaultValue={session.name} required maxLength={120}/></label><input type="hidden" name="planningSessionId" value={session.id}/><input type="hidden" name="accountId" value={session.whatsapp_account_id}/><input type="hidden" name="groupId" value={session.group_id}/><input type="hidden" name="messages" value={JSON.stringify(queueMessages)}/>
-      <label className="check"><input type="checkbox" name="confirmationEnabled"/>Incluir link individual de confirmacao</label><label>Agendar para, opcional<input type="datetime-local" name="scheduledAt"/></label><label>Anexos, ate 1 PDF e 3 imagens<input type="file" name="attachments" accept="application/pdf,image/jpeg,image/png,image/webp" multiple/></label>{queueMessages.length > 250 && <label className="check warning"><input type="checkbox" name="riskAccepted" required/>Estou ciente do risco e aceito o fracionamento em lotes de ate 100.</label>}<SubmitButton idle="Avancar e criar rascunho" pending="Criando campanha..."/>
-    </form></section>}
+    {session.status === "convertida" ? <section className="panel"><div className="confirmation-result">Esta preparacao ja foi convertida em campanha.</div>{session.campaign_id && <a className="button secondary" href="/campanhas">Abrir campanhas</a>}</section> : <section className="panel next-step-panel"><div><p className="step-kicker">Etapa 4</p><h2>Criar campanha em rascunho</h2><p className="muted">Nada sera enviado. Depois, a campanha ainda exigira teste, autorizacao e inicio manual.</p></div><CampaignDraftForm defaultName={session.name} groupId={session.group_id} accountId={session.whatsapp_account_id} planningSessionId={session.id} messages={queueMessages}/></section>}
   </>;
 }
