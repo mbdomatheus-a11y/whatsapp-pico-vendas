@@ -18,6 +18,11 @@ MVP semiautomatico baseado na arquitetura aprovada: painel Next.js, autenticacao
 - Cruzamento server-side com a API corporativa de escalas, sem expor a chave no navegador.
 - Previa por loja com faixa de pico, cobertura planejada e mensagem final.
 - Criacao somente em rascunho: o cruzamento nunca autoriza nem dispara mensagens.
+- Gestao online de ate duas contas do WhatsApp, com QR Code e escolha da conta por campanha.
+- Segmentacao dinamica por planilha complementar, com filtros por regional, estado e demais colunas.
+- Resumo para diretores quando a segmentacao inclui `TELEFONE_DIRETOR`.
+- Anonimizacao automatica de telefone e mensagem depois de um envio bem-sucedido.
+- Troca obrigatoria da senha temporaria no primeiro acesso de novos usuarios.
 
 ## Custo zero e limitacoes
 
@@ -44,6 +49,14 @@ A Evolution API 2.4 passou a exigir ativacao de licenca. O compose usa temporari
 3. Revise a previa, a quantidade de colaboradores com cobertura no pico e todos os alertas.
 4. Clique em `Criar campanha em rascunho` somente depois da conferencia.
 5. O fluxo de teste e autorizacao continua separado e obrigatorio.
+
+A planilha opcional `segmentacao.xlsx` deve ter `COD` ou `COD_LOJA` na primeira coluna. As demais colunas viram filtros automaticamente. Para gerar resumos de diretores, inclua `REGIONAL` e `TELEFONE_DIRETOR`. Cada linha do resumo apresenta loja, pico, colaboradores no pico e a media diaria estimada. A media usa as horas totais escaladas divididas pela amplitude do horario da loja.
+
+Quando uma loja nao possui escala localizada, ela continua na campanha e recebe uma mensagem que informa explicitamente a ausencia da escala.
+
+## Privacidade
+
+As planilhas sao processadas em memoria e nao sao armazenadas. Enquanto uma mensagem aguarda envio, telefone e texto ficam na fila protegida. Depois do sucesso, esses campos sao apagados e o historico conserva apenas status, data, identificador do provedor, hash e os quatro ultimos digitos do telefone.
 
 A API de escalas atualmente devolve no maximo 1000 registros historicos por consulta. Para evitar mensagens incorretas, lojas sem escala encontrada nessa resposta sao excluidas do rascunho e aparecem como alerta. Para cobrir toda a rede com garantia, a API deve oferecer paginacao, consulta em lote ou um endpoint de estado atual por loja.
 

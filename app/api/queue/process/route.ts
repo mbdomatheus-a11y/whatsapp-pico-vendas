@@ -11,7 +11,7 @@ export async function POST() {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   const claimed = Array.isArray(item) ? item[0] : item;
   if (!claimed) return NextResponse.json({ processed: false, reason: "Fila vazia ou pausada" });
-  const result = await new EvolutionProvider().sendText({ destination: claimed.telefone, text: claimed.mensagem, idempotencyKey: claimed.idempotency_key });
+  const result = await new EvolutionProvider(claimed.instance_name).sendText({ destination: claimed.telefone, text: claimed.mensagem, idempotencyKey: claimed.idempotency_key });
   await admin.rpc("finish_message", { target_id: claimed.id, was_success: result.success, provider_id: result.success ? result.externalId ?? null : null, error_text: result.success ? null : result.error });
   return NextResponse.json({ processed: true, id: claimed.id, result }, { status: result.success ? 200 : 502 });
 }

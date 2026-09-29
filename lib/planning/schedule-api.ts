@@ -51,21 +51,31 @@ export class ScheduleDirectory {
   }
 
   countDuringPeak(storeCode: string, day: Weekday, peakWindow: string) {
+    return this.metrics(storeCode, day, peakWindow)?.peakCount ?? null;
+  }
+
+  metrics(storeCode: string, day: Weekday, peakWindow: string) {
     const record = this.latestByStore.get(storeKey(storeCode));
     if (!record) return null;
     const [peakStartText, peakEndText] = peakWindow.split("-");
     const peakStart = minutes(peakStartText); const peakEnd = minutes(peakEndText);
     if (peakStart == null || peakEnd == null) return null;
     const schedule = record.payload?.dados?.schedule?.[API_DAY[day]] ?? {};
-    let count = 0;
+    let count = 0; let staffedMinutes = 0; let earliest: number | null = null; let latest: number | null = null;
     for (const shift of Object.values(schedule)) {
       if (!shift || String(shift.escalar).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase() !== "SIM") continue;
       const start = minutes(shift.inicioExp); const end = minutes(shift.fimExp);
-      if (start == null || end == null || !overlaps(start, end, peakStart, peakEnd)) continue;
+      if (start == null || end == null || end <= start) continue;
       const lunchStart = minutes(shift.inicioAlm); const lunchEnd = minutes(shift.fimAlm);
+      const lunchMinutes = lunchStart != null && lunchEnd != null && lunchEnd > lunchStart ? lunchEnd - lunchStart : 0;
+      staffedMinutes += Math.max(0, end - start - lunchMinutes);
+      earliest = earliest == null ? start : Math.min(earliest, start);
+      latest = latest == null ? end : Math.max(latest, end);
+      if (!overlaps(start, end, peakStart, peakEnd)) continue;
       const fullyAtLunch = lunchStart != null && lunchEnd != null && peakStart >= lunchStart && peakEnd <= lunchEnd;
       if (!fullyAtLunch) count += 1;
     }
-    return count;
+    const span = earliest != null && latest != null ? latest - earliest : 0;
+    return { peakCount: count, averageDay: span > 0 ? Math.round((staffedMinutes / span) * 10) / 10 : 0 };
   }
 }

@@ -16,10 +16,14 @@ function headers() {
 }
 
 export class EvolutionProvider implements MessagingProvider {
+  constructor(private readonly instanceName?: string) {}
+
+  private instance() { return this.instanceName ?? serverEnv().evolutionInstance; }
+
   async sendText(input: SendTextInput): Promise<SendResult> {
     const env = serverEnv();
     const response = await fetch(
-      `${env.evolutionBaseUrl}/message/sendText/${encodeURIComponent(env.evolutionInstance)}`,
+      `${env.evolutionBaseUrl}/message/sendText/${encodeURIComponent(this.instance())}`,
       {
         method: "POST",
         headers: { ...headers(), "Idempotency-Key": input.idempotencyKey },
@@ -37,7 +41,7 @@ export class EvolutionProvider implements MessagingProvider {
     const env = serverEnv();
     try {
       const response = await fetch(
-        `${env.evolutionBaseUrl}/instance/connectionState/${encodeURIComponent(env.evolutionInstance)}`,
+        `${env.evolutionBaseUrl}/instance/connectionState/${encodeURIComponent(this.instance())}`,
         { headers: headers(), cache: "no-store", signal: AbortSignal.timeout(8_000) },
       );
       const body = await response.json().catch(() => ({}));
@@ -46,5 +50,27 @@ export class EvolutionProvider implements MessagingProvider {
     } catch (error) {
       return { gateway: false, whatsapp: "unknown", detail: error instanceof Error ? error.message : "Falha desconhecida" };
     }
+  }
+
+  async createInstance() {
+    const env = serverEnv();
+    const response = await fetch(`${env.evolutionBaseUrl}/instance/create`, { method: "POST", headers: headers(), body: JSON.stringify({ instanceName: this.instance(), qrcode: true, integration: "WHATSAPP-BAILEYS" }), cache: "no-store", signal: AbortSignal.timeout(20_000) });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(body?.message ?? `HTTP ${response.status}`);
+    return body;
+  }
+
+  async connect() {
+    const env = serverEnv();
+    const response = await fetch(`${env.evolutionBaseUrl}/instance/connect/${encodeURIComponent(this.instance())}`, { headers: headers(), cache: "no-store", signal: AbortSignal.timeout(20_000) });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(body?.message ?? `HTTP ${response.status}`);
+    return body;
+  }
+
+  async deleteInstance() {
+    const env = serverEnv();
+    const response = await fetch(`${env.evolutionBaseUrl}/instance/delete/${encodeURIComponent(this.instance())}`, { method: "DELETE", headers: headers(), cache: "no-store", signal: AbortSignal.timeout(20_000) });
+    if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body?.message ?? `HTTP ${response.status}`); }
   }
 }

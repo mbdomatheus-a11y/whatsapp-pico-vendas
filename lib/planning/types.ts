@@ -9,6 +9,7 @@ export type PeakRow = {
   storeName: string;
   phone: string;
   peakWindow: string;
+  segments?: Record<string, string>;
 };
 
 export type PlannedMessage = {
@@ -17,7 +18,9 @@ export type PlannedMessage = {
   mensagem: string;
   loja: string;
   faixa_pico: string;
-  colaboradores_no_pico: number;
+  colaboradores_no_pico: number | null;
+  media_colaboradores_dia?: number | null;
+  segmentos?: Record<string, string>;
 };
 
 export type PreviewResult = {
@@ -25,4 +28,5 @@ export type PreviewResult = {
   warnings: string[];
   totalRows: number;
   matchedStores: number;
+  facets: Record<string, string[]>;
 };
