@@ -15,11 +15,16 @@ export function MfaEnrollment() {
 
   async function begin() {
     setBusy(true); setError("");
-    const supabase = createBrowserSupabase();
-    const { data, error: enrollError } = await supabase.auth.mfa.enroll({ factorType: "totp", friendlyName: `Portal Pico ${new Date().toLocaleDateString("pt-BR")}` });
-    if (enrollError) setError(enrollError.message);
-    else { setFactorId(data.id); setQrCode(data.totp.qr_code); setSecret(data.totp.secret); }
-    setBusy(false);
+    try {
+      const supabase = createBrowserSupabase();
+      const { data, error: enrollError } = await supabase.auth.mfa.enroll({ factorType: "totp", friendlyName: `Portal Pico ${new Date().toLocaleDateString("pt-BR")}` });
+      if (enrollError) setError(enrollError.message);
+      else { setFactorId(data.id); setQrCode(data.totp.qr_code); setSecret(data.totp.secret); }
+    } catch {
+      setError("Nao foi possivel preparar o autenticador. Atualize a pagina e tente novamente.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function finish() {
