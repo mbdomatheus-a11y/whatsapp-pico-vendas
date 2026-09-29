@@ -29,4 +29,5 @@ export type PreviewResult = {
   totalRows: number;
   matchedStores: number;
   facets: Record<string, string[]>;
+  useSchedule: boolean;
 };

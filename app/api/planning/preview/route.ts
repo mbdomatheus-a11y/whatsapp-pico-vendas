@@ -6,11 +6,9 @@ import { WEEKDAYS, type Weekday, type PlannedMessage } from "@/lib/planning/type
 import { parseSegmentationWorkbook } from "@/lib/planning/segmentation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { writeAudit } from "@/lib/audit";
+import { NO_SCHEDULE_MESSAGE_TEMPLATE, SCHEDULE_MESSAGE_TEMPLATE } from "@/lib/planning/templates";
 
 export const runtime = "nodejs";
-
-const DEFAULT_TEMPLATE = "Ola! O pico de vendas da loja {cod_loja} - {nome_loja} nesta {dia} sera das {faixa_pico}. A escala planejada possui {colaboradores_pico} colaboradores com cobertura nesse periodo. Por favor, organize a equipe para maxima cobertura no pico e confirme o recebimento com OK.";
-const NO_SCHEDULE_TEMPLATE = "Ola! O pico de vendas da loja {cod_loja} - {nome_loja} nesta {dia} sera das {faixa_pico}. Nao foi localizada escala planejada para este dia. Por favor, organize a equipe para maxima cobertura no pico e confirme o recebimento com OK.";
 
 function render(template: string, values: Record<string, string | number>) {
   return template.replace(/\{([a-z_]+)\}/g, (_, key: string) => String(values[key] ?? `{${key}}`));
@@ -25,7 +23,8 @@ export async function POST(request: Request) {
     const file = form.get("file");
     const segmentationFile = form.get("segmentationFile");
     const day = String(form.get("day") ?? "") as Weekday;
-    const template = String(form.get("template") ?? DEFAULT_TEMPLATE).trim();
+    const template = String(form.get("template") ?? SCHEDULE_MESSAGE_TEMPLATE).trim();
+    const useSchedule = String(form.get("useSchedule") ?? "true") === "true";
     const accountId = String(form.get("accountId") ?? "");
     const groupId = String(form.get("groupId") ?? "");
     const name = String(form.get("name") ?? "").trim();
@@ -41,18 +40,18 @@ export async function POST(request: Request) {
     const parsed = await parsePeakWorkbook(Buffer.from(await file.arrayBuffer()), day);
     const segmentation = segmentationFile instanceof File && segmentationFile.size > 0
       ? await parseSegmentationWorkbook(Buffer.from(await segmentationFile.arrayBuffer())) : new Map<string, Record<string, string>>();
-    const directory = await ScheduleDirectory.load();
+    const directory = useSchedule ? await ScheduleDirectory.load() : null;
     const warnings = [...parsed.warnings];
-    if (directory.limited) warnings.push("A API retornou o limite de 1000 historicos. Lojas sem escala recente foram excluidas do rascunho para evitar mensagens incorretas.");
+    if (directory?.limited) warnings.push("A API retornou o limite de 1000 historicos. Algumas lojas podem aparecer sem escala recente.");
     const messages: PlannedMessage[] = [];
     const usedPhones = new Set<string>();
     let matchedStores = 0;
     const regionalRows = new Map<string, { phone: string; lines: string[] }>();
     for (const row of parsed.rows) {
       const segments = segmentation.get(row.storeCode.replace(/^0+/, "")) ?? {};
-      const metrics = directory.metrics(row.storeCode, day, row.peakWindow);
+      const metrics = useSchedule ? directory?.metrics(row.storeCode, day, row.peakWindow) : null;
       const planned = metrics?.peakCount ?? null;
-      if (planned == null) warnings.push(`Loja ${row.storeCode}: escala nao encontrada; a mensagem informara a ausencia da escala`);
+      if (useSchedule && planned == null) warnings.push(`Loja ${row.storeCode}: escala nao encontrada; a mensagem informara a ausencia da escala`);
       if (usedPhones.has(row.phone)) {
         warnings.push(`Loja ${row.storeCode}: telefone duplicado; mensagem excluida`);
         continue;
@@ -61,23 +60,24 @@ export async function POST(request: Request) {
       if (planned != null) matchedStores += 1;
       const values = {
         ggl: row.ggl, regional: row.regional, cod_loja: row.storeCode, nome_loja: row.storeName,
-        dia: day, faixa_pico: row.peakWindow, colaboradores_pico: planned ?? "SEM ESCALA",
+        dia: day, faixa_pico: row.peakWindow, colaboradores_pico: useSchedule ? (planned ?? "SEM ESCALA") : "NAO UTILIZADO",
       };
+      const messageTemplate = useSchedule && planned == null && template === SCHEDULE_MESSAGE_TEMPLATE ? NO_SCHEDULE_MESSAGE_TEMPLATE : template;
       messages.push({
-        gerente_id: `LOJA-${row.storeCode}`, telefone: row.phone, mensagem: render(planned == null ? NO_SCHEDULE_TEMPLATE : template, values), loja: row.storeName,
+        gerente_id: `LOJA-${row.storeCode}`, telefone: row.phone, mensagem: render(messageTemplate, values), loja: row.storeName,
         faixa_pico: row.peakWindow, colaboradores_no_pico: planned, media_colaboradores_dia: metrics?.averageDay ?? null,
         segmentos: { TIPO: "GERENTE", REGIONAL: segments.REGIONAL ?? row.regional, GGL: segments.GGL ?? row.ggl, ...segments },
       });
       let directorPhone = String(segments.TELEFONE_DIRETOR ?? segments.DIRETOR_TELEFONE ?? "").replace(/\D/g, "");
       if (directorPhone.length === 10 || directorPhone.length === 11) directorPhone = `55${directorPhone}`;
       const regional = segments.REGIONAL ?? row.regional;
-      if (regional && /^55\d{10,11}$/.test(directorPhone)) {
+      if (useSchedule && regional && /^55\d{10,11}$/.test(directorPhone)) {
         const group = regionalRows.get(regional) ?? { phone: directorPhone, lines: [] };
         group.lines.push(`${row.storeCode} ${row.storeName} | ${row.peakWindow} | ${planned ?? "SEM ESCALA"} | media dia ${metrics?.averageDay ?? "N/D"}`);
         regionalRows.set(regional, group);
       }
     }
-    if (!messages.length) throw new Error("Nenhuma loja da planilha possui escala correspondente na resposta atual da API");
+    if (!messages.length) throw new Error("Nenhum destinatario valido foi encontrado na planilha");
     for (const [regional, group] of regionalRows) {
       const header = `Resumo regional ${regional} - ${day}\nLoja | Pico | Colaboradores no pico | Media do dia`;
       let part = header; let partNumber = 1;
@@ -92,7 +92,7 @@ export async function POST(request: Request) {
     }
     const facets: Record<string, string[]> = {};
     for (const message of messages) for (const [key, value] of Object.entries(message.segmentos ?? {})) if (value) facets[key] = [...new Set([...(facets[key] ?? []), value])].sort();
-    const preview = { messages, warnings, totalRows: parsed.rows.length, matchedStores, facets };
+    const preview = { messages, warnings, totalRows: parsed.rows.length, matchedStores, facets, useSchedule };
     const admin = createAdminClient();
     const { data: settings } = await admin.from("system_settings").select("retention_days").eq("organization_id", auth.access.profile.organization_id).single();
     const retentionDays = settings?.retention_days ?? 30;
@@ -105,13 +105,14 @@ export async function POST(request: Request) {
       name,
       weekday: day,
       message_template: template,
+      use_schedule: useSchedule,
       source_file_name: file.name.slice(0, 180),
       segmentation_file_name: segmentationFile instanceof File && segmentationFile.size > 0 ? segmentationFile.name.slice(0, 180) : null,
       preview_payload: preview,
       expires_at: expiresAt,
     }).select("id").single();
     if (saveError || !session) throw new Error(saveError?.message ?? "Nao foi possivel salvar a preparacao");
-    await writeAudit({ actorId: auth.userId, organizationId: auth.access.profile.organization_id, action: "planning_session_created", entityType: "planning_session", entityId: session.id, metadata: { name, day, totalRows: parsed.rows.length, messages: messages.length, hasSegmentation: !!(segmentationFile instanceof File && segmentationFile.size > 0) } });
+    await writeAudit({ actorId: auth.userId, organizationId: auth.access.profile.organization_id, action: "planning_session_created", entityType: "planning_session", entityId: session.id, metadata: { name, day, totalRows: parsed.rows.length, messages: messages.length, useSchedule, hasSegmentation: !!(segmentationFile instanceof File && segmentationFile.size > 0) } });
     return NextResponse.json({ sessionId: session.id, saved: true });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Falha ao preparar campanha" }, { status: 400 });

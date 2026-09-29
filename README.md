@@ -15,7 +15,7 @@ MVP semiautomatico baseado na arquitetura aprovada: painel Next.js, autenticacao
 - Compose local sem publicar banco ou Redis e com a API ligada apenas em `127.0.0.1`.
 - Scripts de backup, restore e diagnostico.
 - Importacao da planilha de pico em `.xlsx`, com leitura do dia da semana na linha superior.
-- Cruzamento server-side com a API corporativa de escalas, sem expor a chave no navegador.
+- Cruzamento opcional server-side com a API corporativa de escalas, sem expor a chave no navegador.
 - Previa por loja com faixa de pico, cobertura planejada e mensagem final.
 - Criacao somente em rascunho: o cruzamento nunca autoriza nem dispara mensagens.
 - Gestao online de ate duas contas do WhatsApp, com QR Code e escolha da conta por campanha.
@@ -76,11 +76,13 @@ Agendamentos sao registrados no horario de Brasilia. No plano gratuito, a execuc
 
 ## Planejamento por pico e escala
 
-1. No painel, abra `Planejar pico de vendas` e envie a planilha `.xlsx`.
+1. No painel, abra `Preparar envio` e envie a planilha `.xlsx`.
 2. Selecione o dia da semana. O sistema usa os campos `Ggl`, `Regional`, `cod_loja`, `nome_loja`, `TELEFONE` e a coluna `Faixa_Horario` abaixo do dia escolhido.
-3. Revise a previa, a quantidade de colaboradores com cobertura no pico e todos os alertas.
-4. Clique em `Criar campanha em rascunho` somente depois da conferencia.
-5. O fluxo de teste e autorizacao continua separado e obrigatorio.
+3. Ative o cruzamento com escala quando a mensagem depender da quantidade de colaboradores. Desative para comunicados gerais.
+4. Edite o texto, limpe-o ou restaure o modelo original. Textos personalizados sao respeitados inclusive quando uma loja nao possui escala.
+5. Revise a previa, a quantidade de colaboradores com cobertura no pico quando aplicavel e todos os alertas.
+6. Clique em `Criar campanha em rascunho` somente depois da conferencia.
+7. O fluxo de teste e autorizacao continua separado e obrigatorio.
 
 A planilha opcional `segmentacao.xlsx` deve ter `COD` ou `COD_LOJA` na primeira coluna. As demais colunas viram filtros automaticamente. Para gerar resumos de diretores, inclua `REGIONAL` e `TELEFONE_DIRETOR`. Cada linha do resumo apresenta loja, pico, colaboradores no pico e a media diaria estimada. A media usa as horas totais escaladas divididas pela amplitude do horario da loja.
 
@@ -88,9 +90,9 @@ Quando uma loja nao possui escala localizada, ela continua na campanha e recebe 
 
 ## Privacidade
 
-As planilhas sao processadas em memoria e nao sao armazenadas. Enquanto uma mensagem aguarda envio, telefone e texto ficam na fila protegida. Depois do sucesso, esses campos sao apagados e o historico conserva apenas status, data, identificador do provedor, hash e os quatro ultimos digitos do telefone. Os numeros do grupo fixo de teste sao a unica lista persistente de contatos e ficam acessiveis somente pelas rotas protegidas do servidor.
+Os arquivos originais das planilhas sao processados em memoria e nao sao armazenados. A preparacao normalizada fica salva temporariamente no Supabase, conforme a retencao definida pelo administrador, para permitir continuidade em outro dispositivo autorizado. Enquanto uma mensagem aguarda envio, telefone e texto ficam na fila protegida. Depois do sucesso, esses campos sao apagados e o historico conserva apenas status, data, identificador do provedor, hash e os quatro ultimos digitos do telefone. Os numeros do grupo fixo de teste ficam acessiveis somente pelas rotas protegidas do servidor.
 
-A API de escalas atualmente devolve no maximo 1000 registros historicos por consulta. Para evitar mensagens incorretas, lojas sem escala encontrada nessa resposta sao excluidas do rascunho e aparecem como alerta. Para cobrir toda a rede com garantia, a API deve oferecer paginacao, consulta em lote ou um endpoint de estado atual por loja.
+A API de escalas atualmente devolve no maximo 1000 registros historicos por consulta. Lojas sem escala encontrada permanecem no rascunho, aparecem como alerta e recebem a informacao de ausencia de escala quando o modelo original estiver em uso. Para cobrir toda a rede com garantia, a API deve oferecer paginacao, consulta em lote ou um endpoint de estado atual por loja.
 
 ## Operacao segura
 
