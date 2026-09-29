@@ -3,6 +3,7 @@ import { OperationControls, QueueControls } from "@/components/operation-control
 import { CampaignPlanner } from "@/components/campaign-planner";
 import { AccountsManager } from "@/components/accounts-manager";
 import { QueueMonitor } from "@/components/queue-monitor";
+import { TestGroupManager } from "@/components/test-group-manager";
 
 function campaignStage(status: string, tested: boolean) {
   if (status === "rascunho" && !tested) return "1. Aguardando teste";
@@ -44,6 +45,7 @@ export default async function Dashboard() {
       </section>
       <QueueControls />
       <AccountsManager />
+      <TestGroupManager />
       <section className="panel">
         <div className="panel-heading"><div><h2>Campanhas</h2><p>Revise, teste e autorize cada lote.</p></div><a className="button" href="#nova">Nova campanha</a></div>
         <div className="table-wrap"><table><thead><tr><th>Campanha</th><th>Status</th><th>Mensagens</th><th>Criada em</th><th>Acoes</th></tr></thead><tbody>

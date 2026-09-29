@@ -14,7 +14,7 @@ export function OperationControls({ campaignId, status, tested }: { campaignId: 
     setMessage("");
     const response = await fetch(`/api/campaigns/${campaignId}/${action}`, { method: "POST" });
     const body = await response.json().catch(() => ({}));
-    setMessage(response.ok ? (action === "test" ? "Teste enviado" : "Atualizado") : body.error ?? "Falha na operacao");
+    setMessage(response.ok ? (action === "test" ? `Teste enviado para ${body.sent ?? 1} integrante(s)` : "Atualizado") : body.error ?? "Falha na operacao");
     setBusy(null);
     router.refresh();
   }

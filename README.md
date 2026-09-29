@@ -6,7 +6,7 @@ MVP semiautomatico baseado na arquitetura aprovada: painel Next.js, autenticacao
 
 - Login com Supabase Auth e sessao SSR.
 - Criacao de campanha em rascunho com ate 500 mensagens.
-- Teste obrigatorio para um numero autorizado antes da liberacao.
+- Teste obrigatorio para um grupo fixo autorizado antes da liberacao.
 - Autorizacao, pausa, retomada e estados auditaveis.
 - Reserva atomica da fila com `FOR UPDATE SKIP LOCKED`.
 - Chave unica de idempotencia e bloqueio de duplicidade.
@@ -42,6 +42,12 @@ A Evolution API 2.4 passou a exigir ativacao de licenca. O compose usa temporari
 8. Crie a instancia indicada por `EVOLUTION_INSTANCE`, leia o QR Code e confirme o estado conectado.
 9. Configure `ESCALA_API_URL` e `ESCALA_API_KEY` apenas no ambiente do servidor.
 
+## Grupo fixo de teste
+
+O painel permite cadastrar os integrantes que recebem os testes de todas as campanhas. Os celulares ficam salvos no Supabase, protegidos para acesso exclusivo das rotas do servidor, e aparecem mascarados no portal. Uma campanha so avanca para autorizacao quando o teste chega a todos os integrantes ativos.
+
+Mantenha pelo menos um integrante ativo. O numero antigo configurado em `AUTHORIZED_TEST_NUMBER` e importado automaticamente quando o grupo ainda esta vazio.
+
 ## Planejamento por pico e escala
 
 1. No painel, abra `Planejar pico de vendas` e envie a planilha `.xlsx`.
@@ -56,7 +62,7 @@ Quando uma loja nao possui escala localizada, ela continua na campanha e recebe 
 
 ## Privacidade
 
-As planilhas sao processadas em memoria e nao sao armazenadas. Enquanto uma mensagem aguarda envio, telefone e texto ficam na fila protegida. Depois do sucesso, esses campos sao apagados e o historico conserva apenas status, data, identificador do provedor, hash e os quatro ultimos digitos do telefone.
+As planilhas sao processadas em memoria e nao sao armazenadas. Enquanto uma mensagem aguarda envio, telefone e texto ficam na fila protegida. Depois do sucesso, esses campos sao apagados e o historico conserva apenas status, data, identificador do provedor, hash e os quatro ultimos digitos do telefone. Os numeros do grupo fixo de teste sao a unica lista persistente de contatos e ficam acessiveis somente pelas rotas protegidas do servidor.
 
 A API de escalas atualmente devolve no maximo 1000 registros historicos por consulta. Para evitar mensagens incorretas, lojas sem escala encontrada nessa resposta sao excluidas do rascunho e aparecem como alerta. Para cobrir toda a rede com garantia, a API deve oferecer paginacao, consulta em lote ou um endpoint de estado atual por loja.
 
@@ -64,7 +70,7 @@ A API de escalas atualmente devolve no maximo 1000 registros historicos por cons
 
 1. Importe ou cole as mensagens e crie o rascunho.
 2. Revise amostras e totais.
-3. Execute o teste, que sempre usa `AUTHORIZED_TEST_NUMBER`.
+3. Execute o teste, que sempre envia para todos os integrantes ativos do grupo fixo.
 4. Autorize a campanha somente depois do teste.
 5. Acione `POST /api/queue/process` repetidamente pelo painel ou por um worker autorizado, uma mensagem por chamada.
 6. Pause a campanha se o gateway ou WhatsApp ficar indisponivel.
