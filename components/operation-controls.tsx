@@ -58,13 +58,13 @@ export function QueueControls() {
     try {
       const response = await fetch("/api/health");
       const body = await response.json().catch(() => ({}));
-      setMessage(response.ok ? `Gateway online, WhatsApp: ${body.whatsapp}` : body.detail ?? body.error ?? "Gateway offline");
+      setMessage(`${body.title ?? (response.ok ? "Conexao verificada" : "Falha na conexao")}. ${body.action ?? body.detail ?? body.error ?? "Tente novamente."}`);
       router.refresh();
     } catch { setMessage("Nao foi possivel verificar a conexao."); }
     finally { setBusy(false); }
   }
   return <div className="queue-controls">
     <button className="secondary" disabled={busy} onClick={checkHealth}>{busy ? "Verificando conexao..." : "Verificar conexao"}</button>
-    {message && <span>{message}</span>}
+    {message && <span className="connection-message" role="status">{message}</span>}
   </div>;
 }

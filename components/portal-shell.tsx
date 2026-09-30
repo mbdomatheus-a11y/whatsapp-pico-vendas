@@ -23,6 +23,7 @@ export function PortalShell({
   role,
   groups,
   selectedGroupId,
+  viewAllGroups = false,
 }: {
   children: ReactNode;
   active: string;
@@ -32,6 +33,7 @@ export function PortalShell({
   role: string;
   groups: Group[];
   selectedGroupId: string;
+  viewAllGroups?: boolean;
 }) {
   const canAdmin = ["master", "admin"].includes(role);
   return <main className="app-shell">
@@ -43,7 +45,7 @@ export function PortalShell({
         <span><strong>WhatsApp <i>OK</i></strong><small>{description ?? "Central de comunicacoes"}</small></span>
       </a>
       <div className="header-actions">
-        <GroupSelector groups={groups} selected={selectedGroupId} />
+        <GroupSelector groups={groups} selected={viewAllGroups ? "__all__" : selectedGroupId} canViewAll={role === "master"} />
         <RefreshButton />
         {canAdmin && <a className="button secondary" href="/admin">Administracao</a>}
         <form action="/api/auth/logout" method="post"><button className="secondary">Sair</button></form>

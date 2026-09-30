@@ -21,11 +21,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (!claimed) return NextResponse.json({ processed: 0, sent: 0, failed: 0, remaining: 0, complete: true });
   let text = claimed.mensagem as string;
   if (claimed.confirmation_enabled) {
-    const token = randomBytes(32).toString("base64url"); const tokenHash = createHash("sha256").update(token).digest("hex");
+    const token = randomBytes(12).toString("base64url"); const tokenHash = createHash("sha256").update(token).digest("hex");
     await admin.from("read_confirmations").delete().eq("message_id", claimed.id).is("confirmed_at", null);
     await admin.from("read_confirmations").insert({ campaign_id: id, message_id: claimed.id, token_hash: tokenHash, expires_at: new Date(Date.now() + 7 * 86400000).toISOString() });
     const appUrl = process.env.APP_URL ?? "https://whatsapp-pico-vendas.vercel.app";
-    text += `\n\nConfirme o recebimento: ${appUrl}/c/${token}`;
+    text += `\n\nConfirmar recebimento: ${appUrl}/ok/${token}`;
   }
   const { data: attachments } = await admin.from("campaign_attachments").select("storage_path,file_name,mime_type").eq("campaign_id", id).order("created_at");
   const provider = new EvolutionProvider(claimed.instance_name);

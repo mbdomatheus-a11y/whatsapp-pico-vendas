@@ -7,7 +7,11 @@ export async function GET() {
   if (!auth) return NextResponse.json({ error: "Nao autorizado" }, { status: 401 });
   const { data, error } = await auth.supabase.from("whatsapp_accounts").select("id,label,instance_name,enabled,created_at").order("created_at");
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
-  const accounts = await Promise.all((data ?? []).map(async (account) => ({ ...account, health: await new EvolutionProvider(account.instance_name).health() })));
+  const accounts = await Promise.all((data ?? []).map(async (account) => {
+    const provider = new EvolutionProvider(account.instance_name);
+    const [health, webhook] = await Promise.all([provider.health(), provider.webhookStatus()]);
+    return { ...account, health, webhook };
+  }));
   return NextResponse.json({ accounts });
 }
 
