@@ -15,7 +15,7 @@ export async function POST(_: Request, context: { params: Promise<{ id: string }
   const auth = await requireApiUser();
   if (!auth) return NextResponse.json({ error: "Nao autorizado" }, { status: 401 });
   const { id } = await context.params;
-  const { data: message, error } = await auth.supabase.from("message_queue").select("mensagem,campaigns(whatsapp_accounts(instance_name))").eq("campaign_id", id).order("sequence_number").limit(1).single();
+  const { data: message, error } = await auth.supabase.from("message_queue").select("mensagem,whatsapp_accounts(instance_name),campaigns(whatsapp_accounts(instance_name))").eq("campaign_id", id).order("sequence_number").limit(1).single();
   if (error) return NextResponse.json({ error: error.message }, { status: 404 });
   const admin = createAdminClient();
   const { data: savedRecipients, error: recipientsError } = await admin.from("test_recipients").select("id,phone").eq("organization_id", auth.access.profile.organization_id).eq("active", true).order("created_at");
@@ -23,8 +23,9 @@ export async function POST(_: Request, context: { params: Promise<{ id: string }
   const legacyPhone = normalizePhone(serverEnv().authorizedTestNumber ?? "");
   const recipients = savedRecipients?.length ? savedRecipients : legacyPhone ? [{ id: "legacy", phone: legacyPhone }] : [];
   if (!recipients.length) return NextResponse.json({ error: "Cadastre pelo menos um integrante no grupo de teste" }, { status: 400 });
+  const queueAccount = message.whatsapp_accounts as unknown as { instance_name?: string } | null;
   const relation = message.campaigns as unknown as { whatsapp_accounts?: { instance_name?: string } } | null;
-  const provider = new EvolutionProvider(relation?.whatsapp_accounts?.instance_name);
+  const provider = new EvolutionProvider(queueAccount?.instance_name ?? relation?.whatsapp_accounts?.instance_name);
   const { data: attachments } = await admin.from("campaign_attachments").select("storage_path,file_name,mime_type").eq("campaign_id", id).order("created_at");
   const results = [];
   for (const recipient of recipients) {

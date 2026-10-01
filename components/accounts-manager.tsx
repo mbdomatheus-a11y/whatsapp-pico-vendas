@@ -33,7 +33,7 @@ export function AccountsManager() {
   async function connect(id: string) {
     setBusy(true); setMessage(""); setQr(null);
     const response = await fetch(`/api/accounts/${id}/connect`, { method: "POST" }); const body = await response.json().catch(() => ({}));
-    if (response.ok && body.qr) setQr(String(body.qr).startsWith("data:") ? body.qr : `data:image/png;base64,${body.qr}`);
+    if (response.ok && body.qr) { setQr(String(body.qr).startsWith("data:") ? body.qr : `data:image/png;base64,${body.qr}`); setMessage(body.recreated ? "A conexao ausente foi recriada. Leia o novo QR Code." : "QR Code gerado. Leia pelo WhatsApp deste numero."); }
     else setMessage(response.ok ? `Codigo de pareamento: ${body.pairingCode ?? "indisponivel"}` : body.error ?? "Falha ao gerar QR Code");
     setBusy(false);
   }
@@ -53,7 +53,7 @@ export function AccountsManager() {
     finally { setBusy(false); }
   }
   return <section className="panel" id="contas">
-    <div className="panel-heading"><div><h2>Contas do WhatsApp</h2><p>Conecte e acompanhe ate dois numeros. A conta e escolhida ao criar cada campanha.</p></div><button className="secondary small" disabled={busy} onClick={load}>Atualizar</button></div>
+    <div className="panel-heading"><div><h2>Contas do WhatsApp</h2><p>Conecte e acompanhe ate 10 numeros. Em cada campanha, use um numero ou alterne entre varios.</p></div><button className="secondary small" disabled={busy} onClick={load}>Atualizar</button></div>
     <div className="account-grid">{accounts.map((account) => <article className="account-card" key={account.id}>
       <strong>{account.label}</strong><span>{account.instance_name}</span>
       <span className={`badge ${account.health?.code === "connected" ? "concluida" : "pausada"}`}>{account.health?.title ?? "Verificando conexao"}</span>
@@ -61,7 +61,7 @@ export function AccountsManager() {
       <span className={`badge ${account.webhook?.enabled ? "concluida" : "pronto_para_envio"}`}>{account.webhook?.enabled ? "Respostas e reacoes ativas" : "Coleta de respostas inativa"}</span>
       <div className="actions"><button className="small whatsapp-action" disabled={busy} onClick={() => connect(account.id)}>{busy ? "Processando..." : "Conectar / QR"}</button><button className="small secondary" disabled={busy || !account.health?.gateway} onClick={() => enableInbound(account.id)}>{busy ? "Processando..." : account.webhook?.enabled ? "Reconfigurar respostas" : "Ativar respostas"}</button>{accounts.length > 1 && <button className="small danger" disabled={busy} onClick={() => remove(account.id)}>Remover</button>}</div>
     </article>)}</div>
-    {accounts.length < 2 && <form action={create} className="stack compact-form"><label>Nome da conta<input name="label" required placeholder="Ex.: Numero 2" /></label><label>Identificador tecnico<input name="instanceName" required pattern="[a-zA-Z0-9_-]{2,60}" placeholder="numero-2" /></label><button disabled={busy}>Criar segunda conta</button></form>}
+    {accounts.length < 10 && <form action={create} className="stack compact-form"><label>Nome da conta<input name="label" required placeholder={`Ex.: Numero ${accounts.length + 1}`} /></label><label>Identificador tecnico<input name="instanceName" required pattern="[a-zA-Z0-9_-]{2,60}" placeholder={`numero-${accounts.length + 1}`} /></label><button disabled={busy}>{busy ? "Criando conta..." : `Adicionar numero (${accounts.length}/10)`}</button></form>}
     {qr && <div className="qr-modal"><p>Abra o WhatsApp deste numero e leia o QR Code:</p><img src={qr} alt="QR Code para conectar WhatsApp" /></div>}
     {message && <div className="alert">{message}</div>}
   </section>;

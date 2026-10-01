@@ -16,6 +16,13 @@ function headers() {
   };
 }
 
+function providerError(body: any, status: number, action: string) {
+  const detail = body?.response?.message?.[0] ?? body?.response?.message ?? body?.message ?? body?.error;
+  if (detail) return typeof detail === "string" ? detail : JSON.stringify(detail);
+  if (status === 404) return `${action}: rota nao encontrada no gateway. Confira se a URL publica aponta para a Evolution API na porta 8080.`;
+  return `${action}: HTTP ${status}`;
+}
+
 export class EvolutionProvider implements MessagingProvider {
   constructor(private readonly instanceName?: string) {}
 
@@ -97,15 +104,33 @@ export class EvolutionProvider implements MessagingProvider {
     const env = serverEnv();
     const response = await fetch(`${env.evolutionBaseUrl}/instance/create`, { method: "POST", headers: headers(), body: JSON.stringify({ instanceName: this.instance(), qrcode: true, integration: "WHATSAPP-BAILEYS" }), cache: "no-store", signal: AbortSignal.timeout(20_000) });
     const body = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(body?.message ?? `HTTP ${response.status}`);
+    if (!response.ok) throw new Error(providerError(body, response.status, "Nao foi possivel criar a conexao"));
     return body;
+  }
+
+  async instanceExists() {
+    const env = serverEnv();
+    const response = await fetch(`${env.evolutionBaseUrl}/instance/fetchInstances?instanceName=${encodeURIComponent(this.instance())}`, { headers: headers(), cache: "no-store", signal: AbortSignal.timeout(10_000) });
+    const body = await response.json().catch(() => ([]));
+    if (!response.ok) throw new Error(providerError(body, response.status, "Nao foi possivel consultar as conexoes"));
+    const instances = Array.isArray(body) ? body : Array.isArray(body?.instances) ? body.instances : [];
+    return instances.some((item: any) => {
+      const name = item?.name ?? item?.instanceName ?? item?.instance?.instanceName ?? item?.instance?.name;
+      return name === this.instance();
+    });
+  }
+
+  async ensureInstance() {
+    if (await this.instanceExists()) return false;
+    await this.createInstance();
+    return true;
   }
 
   async connect() {
     const env = serverEnv();
     const response = await fetch(`${env.evolutionBaseUrl}/instance/connect/${encodeURIComponent(this.instance())}`, { headers: headers(), cache: "no-store", signal: AbortSignal.timeout(20_000) });
     const body = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(body?.message ?? `HTTP ${response.status}`);
+    if (!response.ok) throw new Error(providerError(body, response.status, "Nao foi possivel gerar o QR Code"));
     return body;
   }
 

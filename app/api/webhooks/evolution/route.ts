@@ -72,9 +72,9 @@ export async function POST(request: Request) {
   const details = messageDetails(data);
   const recentCutoff = new Date(Date.now() - 30 * 86400000).toISOString();
   const baseMatch = () => admin.from("message_queue")
-    .select("id,campaign_id,enviado_em,campaigns!inner(group_id,whatsapp_account_id)")
+    .select("id,campaign_id,enviado_em,whatsapp_account_id,campaigns!inner(group_id)")
     .eq("destination_hash", senderHash)
-    .eq("campaigns.whatsapp_account_id", account.id)
+    .eq("whatsapp_account_id", account.id)
     .gte("enviado_em", recentCutoff)
     .order("enviado_em", { ascending: false }).limit(1);
   let matched = null;

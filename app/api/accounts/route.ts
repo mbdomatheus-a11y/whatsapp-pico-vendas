@@ -24,9 +24,9 @@ export async function POST(request: Request) {
   const instanceName = String(body.instanceName ?? "").trim();
   if (!label || !/^[a-zA-Z0-9_-]{2,60}$/.test(instanceName)) return NextResponse.json({ error: "Nome ou identificador invalido" }, { status: 400 });
   const { count } = await auth.supabase.from("whatsapp_accounts").select("id", { count: "exact", head: true }).eq("enabled", true);
-  if ((count ?? 0) >= 2) return NextResponse.json({ error: "O portal permite no maximo dois numeros" }, { status: 400 });
+  if ((count ?? 0) >= 10) return NextResponse.json({ error: "O portal permite no maximo 10 numeros ativos" }, { status: 400 });
   try {
-    await new EvolutionProvider(instanceName).createInstance();
+    await new EvolutionProvider(instanceName).ensureInstance();
     const { data, error } = await auth.supabase.from("whatsapp_accounts").insert({ label, instance_name: instanceName, created_by: auth.userId, organization_id: auth.access.profile.organization_id }).select("id,label,instance_name,enabled").single();
     if (error) throw new Error(error.message);
     return NextResponse.json({ account: data });

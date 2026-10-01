@@ -10,7 +10,9 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
   const { data } = await auth.supabase.from("whatsapp_accounts").select("instance_name").eq("id", id).single();
   if (!data) return NextResponse.json({ error: "Conta nao encontrada" }, { status: 404 });
   try {
-    const result = await new EvolutionProvider(data.instance_name).connect();
-    return NextResponse.json({ qr: result.base64 ?? result.qrcode?.base64 ?? null, pairingCode: result.pairingCode ?? null });
+    const provider = new EvolutionProvider(data.instance_name);
+    const recreated = await provider.ensureInstance();
+    const result = await provider.connect();
+    return NextResponse.json({ qr: result.base64 ?? result.qrcode?.base64 ?? null, pairingCode: result.pairingCode ?? null, recreated });
   } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Falha ao conectar" }, { status: 400 }); }
 }

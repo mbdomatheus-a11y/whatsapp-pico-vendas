@@ -29,6 +29,10 @@ export function CampaignDraftForm({
   requireAllRecipientsConfirmation?: boolean;
 }) {
   const router = useRouter();
+  const defaultAccountId = accountId ?? accounts?.[0]?.id ?? "";
+  const [accountMode, setAccountMode] = useState<"single"|"round_robin">("single");
+  const [singleAccountId, setSingleAccountId] = useState(defaultAccountId);
+  const [rotatingAccountIds, setRotatingAccountIds] = useState<string[]>(defaultAccountId ? [defaultAccountId] : []);
   const [scheduleMode, setScheduleMode] = useState<"immediate"|"scheduled">("immediate");
   const [scheduledAt, setScheduledAt] = useState("");
   const [messageJson, setMessageJson] = useState(JSON.stringify(messages, null, editableMessages ? 2 : 0));
@@ -43,12 +47,19 @@ export function CampaignDraftForm({
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault(); setError("");
+    const selectedAccountIds = accountMode === "single" ? [singleAccountId].filter(Boolean) : rotatingAccountIds;
+    if (!selectedAccountIds.length || (accountMode === "round_robin" && selectedAccountIds.length < 2)) {
+      setError(accountMode === "round_robin" ? "Selecione pelo menos dois numeros para alternar os envios." : "Escolha o numero que fara os envios."); return;
+    }
     if (scheduleMode === "scheduled" && (!scheduledAt || scheduledAt < minimumSchedule)) {
       setError("Escolha um horario de Brasilia com pelo menos 5 minutos de antecedencia."); return;
     }
     setBusy(true);
     try {
       const form = new FormData(event.currentTarget);
+      form.set("accountMode", accountMode);
+      form.delete("accountIds");
+      selectedAccountIds.forEach((id) => form.append("accountIds", id));
       form.set("scheduleMode", scheduleMode);
       form.set("messages", messageJson);
       if (planningSessionId) {
@@ -65,7 +76,13 @@ export function CampaignDraftForm({
   }
 
   return <form onSubmit={submit} encType="multipart/form-data" className="stack">
-    {accounts ? <label>Conta de envio<select name="accountId" required defaultValue={accounts[0]?.id}>{accounts.map((account) => <option key={account.id} value={account.id}>{account.label}</option>)}</select></label> : <input type="hidden" name="accountId" value={accountId}/>} 
+    {accounts ? <fieldset className="account-choice"><legend>Numeros de envio</legend>
+      <label className="check"><input type="radio" checked={accountMode === "single"} onChange={() => setAccountMode("single")}/><span><strong>Usar um unico numero</strong><small>Todas as mensagens sairao pela conta escolhida.</small></span></label>
+      {accountMode === "single" && <label>Conta de envio<select value={singleAccountId} onChange={(event) => setSingleAccountId(event.target.value)} required><option value="">Selecione</option>{accounts.map((account) => <option key={account.id} value={account.id}>{account.label}</option>)}</select></label>}
+      <label className="check"><input type="radio" checked={accountMode === "round_robin"} disabled={accounts.length < 2} onChange={() => setAccountMode("round_robin")}/><span><strong>Alternar entre numeros</strong><small>As mensagens serao distribuidas em sequencia entre as contas marcadas.</small></span></label>
+      {accountMode === "round_robin" && <div className="account-selection-grid">{accounts.map((account) => <label className="check" key={account.id}><input type="checkbox" checked={rotatingAccountIds.includes(account.id)} onChange={(event) => setRotatingAccountIds((current) => event.target.checked ? [...current, account.id] : current.filter((id) => id !== account.id))}/>{account.label}</label>)}</div>}
+      {accounts.length < 2 && <small className="muted">Conecte pelo menos dois numeros em Configuracoes para ativar a alternancia.</small>}
+    </fieldset> : <><input type="hidden" name="accountMode" value="single"/><input type="hidden" name="accountIds" value={accountId}/></>}
     <label>Nome da campanha<input name="name" defaultValue={defaultName} required maxLength={120}/></label>
     <input type="hidden" name="groupId" value={groupId}/>{planningSessionId && <input type="hidden" name="planningSessionId" value={planningSessionId}/>} 
     {editableMessages ? <label>Mensagens<textarea rows={8} required value={messageJson} onChange={(event) => setMessageJson(event.target.value)}/></label> : <input type="hidden" name="messages" value={messageJson}/>} 
