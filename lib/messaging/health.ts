@@ -4,7 +4,7 @@ export type ConnectionHealth = {
   title: string;
   detail: string;
   action: string;
-  code: "connected" | "whatsapp_disconnected" | "gateway_timeout" | "gateway_unreachable" | "gateway_unauthorized" | "gateway_error" | "status_unavailable";
+  code: "connected" | "whatsapp_disconnected" | "instance_missing" | "gateway_timeout" | "gateway_unreachable" | "gateway_unauthorized" | "gateway_error" | "status_unavailable";
 };
 
 export function connectionHealth(input: { gateway: boolean; whatsapp?: string; httpStatus?: number; error?: unknown }): ConnectionHealth {
@@ -23,6 +23,11 @@ export function connectionHealth(input: { gateway: boolean; whatsapp?: string; h
     gateway: true, whatsapp: state, code: "status_unavailable", title: "WhatsApp conectando",
     detail: "A estacao respondeu e a conta ainda esta concluindo a conexao.",
     action: "Aguarde alguns segundos e verifique novamente.",
+  };
+  if (input.gateway && state === "missing") return {
+    gateway: true, whatsapp: state, code: "instance_missing", title: "Conta pronta para conectar",
+    detail: "A estacao local esta acessivel, mas esta conta ainda nao foi criada na Evolution API.",
+    action: "Use Conectar / QR. O portal criara a instancia e exibira o codigo automaticamente.",
   };
   if (input.httpStatus === 401 || input.httpStatus === 403) return {
     gateway: false, whatsapp: "unknown", code: "gateway_unauthorized", title: "Acesso ao gateway recusado",

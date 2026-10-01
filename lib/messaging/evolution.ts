@@ -23,6 +23,13 @@ function providerError(body: any, status: number, action: string) {
   return `${action}: HTTP ${status}`;
 }
 
+function isMissingInstance(body: any, status: number) {
+  if (status !== 404) return false;
+  const detail = body?.response?.message?.[0] ?? body?.response?.message ?? body?.message ?? body?.error ?? "";
+  const message = typeof detail === "string" ? detail : JSON.stringify(detail);
+  return /instance.*not found|instancia.*nao encontr/i.test(message);
+}
+
 export class EvolutionProvider implements MessagingProvider {
   constructor(private readonly instanceName?: string) {}
 
@@ -68,6 +75,9 @@ export class EvolutionProvider implements MessagingProvider {
         { headers: headers(), cache: "no-store", signal: AbortSignal.timeout(8_000) },
       );
       const body = await response.json().catch(() => ({}));
+      if (isMissingInstance(body, response.status)) {
+        return connectionHealth({ gateway: true, whatsapp: "missing", httpStatus: response.status });
+      }
       const state = body?.instance?.state ?? body?.state ?? "unknown";
       return connectionHealth({ gateway: response.ok, whatsapp: state, httpStatus: response.status });
     } catch (error) {
@@ -112,6 +122,7 @@ export class EvolutionProvider implements MessagingProvider {
     const env = serverEnv();
     const response = await fetch(`${env.evolutionBaseUrl}/instance/fetchInstances?instanceName=${encodeURIComponent(this.instance())}`, { headers: headers(), cache: "no-store", signal: AbortSignal.timeout(10_000) });
     const body = await response.json().catch(() => ([]));
+    if (isMissingInstance(body, response.status)) return false;
     if (!response.ok) throw new Error(providerError(body, response.status, "Nao foi possivel consultar as conexoes"));
     const instances = Array.isArray(body) ? body : Array.isArray(body?.instances) ? body.instances : [];
     return instances.some((item: any) => {
