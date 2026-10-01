@@ -87,7 +87,7 @@ export async function GET(request: Request) {
   if (url.searchParams.get("format") !== "xlsx") {
     const [campaigns, queue, communications, confirmations, inbound, audit] = await Promise.all([
       campaignFilter(admin.from("campaigns").select("id", { count: "exact", head: true })),
-      queueFilter(admin.from("message_queue").select("id,status", { count: "exact" }).limit(5000)),
+      queueFilter(admin.from("message_queue").select("id,status,campaigns!inner(group_id)", { count: "exact" }).limit(5000)),
       groupFilter(admin.from("communication_logs").select("id", { count: "exact", head: true }), "sent_at"),
       confirmationFilter(admin.from("read_confirmations").select("id,campaigns!inner(group_id)", { count: "exact", head: true })),
       groupFilter(admin.from("inbound_events").select("id", { count: "exact", head: true }), "received_at"),
