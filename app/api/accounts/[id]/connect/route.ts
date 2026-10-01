@@ -11,8 +11,8 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
   if (!data) return NextResponse.json({ error: "Conta nao encontrada" }, { status: 404 });
   try {
     const provider = new EvolutionProvider(data.instance_name);
-    const recreated = await provider.ensureInstance();
-    const result = await provider.connect();
-    return NextResponse.json({ qr: result.base64 ?? result.qrcode?.base64 ?? null, pairingCode: result.pairingCode ?? null, recreated });
+    const connection = await provider.prepareConnection();
+    const result = connection.result;
+    return NextResponse.json({ qr: result.base64 ?? result.qrcode?.base64 ?? null, pairingCode: result.pairingCode ?? null, recreated: connection.created });
   } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Falha ao conectar" }, { status: 400 }); }
 }

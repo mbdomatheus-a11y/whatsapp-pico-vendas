@@ -126,6 +126,31 @@ export class EvolutionProvider implements MessagingProvider {
     return true;
   }
 
+  async prepareConnection() {
+    if (await this.instanceExists()) {
+      return { result: await this.connect(), created: false };
+    }
+
+    const creation = await this.createInstance();
+    const hasConnectionData = Boolean(
+      creation?.base64
+      ?? creation?.qrcode?.base64
+      ?? creation?.pairingCode,
+    );
+    if (hasConnectionData) return { result: creation, created: true };
+
+    // Algumas versoes confirmam a criacao antes de disponibilizar a instancia
+    // para /connect. Aguarde a propagacao para nao exibir "Instance not found".
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      if (await this.instanceExists()) {
+        return { result: await this.connect(), created: true };
+      }
+    }
+
+    throw new Error(`A conexao ${this.instance()} foi criada, mas ainda nao ficou disponivel. Aguarde alguns segundos e tente Conectar / QR novamente.`);
+  }
+
   async connect() {
     const env = serverEnv();
     const response = await fetch(`${env.evolutionBaseUrl}/instance/connect/${encodeURIComponent(this.instance())}`, { headers: headers(), cache: "no-store", signal: AbortSignal.timeout(20_000) });

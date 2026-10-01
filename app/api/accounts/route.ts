@@ -29,17 +29,13 @@ export async function POST(request: Request) {
   if ((count ?? 0) >= 10) return NextResponse.json({ error: "O portal permite no maximo 10 numeros ativos" }, { status: 400 });
   try {
     const provider = new EvolutionProvider(instanceName);
-    await provider.ensureInstance();
+    const connection = await provider.prepareConnection();
     const accountWrite = existing
       ? auth.supabase.from("whatsapp_accounts").update({ label, enabled: true, created_by: auth.userId }).eq("id", existing.id)
       : auth.supabase.from("whatsapp_accounts").insert({ label, instance_name: instanceName, created_by: auth.userId, organization_id: auth.access.profile.organization_id });
     const { data, error } = await accountWrite.select("id,label,instance_name,enabled").single();
     if (error) throw new Error(error.message);
-    try {
-      const connection = await provider.connect();
-      return NextResponse.json({ account: data, qr: connection.base64 ?? connection.qrcode?.base64 ?? null, pairingCode: connection.pairingCode ?? null });
-    } catch (connectionError) {
-      return NextResponse.json({ account: data, warning: connectionError instanceof Error ? connectionError.message : "Conta criada, mas o QR Code nao ficou disponivel" });
-    }
+    const result = connection.result;
+    return NextResponse.json({ account: data, qr: result.base64 ?? result.qrcode?.base64 ?? null, pairingCode: result.pairingCode ?? null });
   } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Falha ao criar conta" }, { status: 400 }); }
 }
