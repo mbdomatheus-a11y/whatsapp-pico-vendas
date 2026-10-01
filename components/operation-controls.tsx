@@ -3,12 +3,13 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
-export function OperationControls({ campaignId, status, tested, totalMessages }: { campaignId: string; status: string; tested: boolean; totalMessages: number }) {
+export function OperationControls({ campaignId, status, tested, totalMessages, scheduledAt }: { campaignId: string; status: string; tested: boolean; totalMessages: number; scheduledAt?: string | null }) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
   const stopRequested = useRef(false);
+  const scheduledForFuture = !!scheduledAt && new Date(scheduledAt).getTime() > Date.now();
 
   async function run(action: "test" | "authorize" | "pause" | "stop") {
     setBusy(action);
@@ -28,11 +29,25 @@ export function OperationControls({ campaignId, status, tested, totalMessages }:
     let totalSent = 0; let totalFailed = 0;
     for (let batch = 0; batch < 500; batch += 1) {
       if (stopRequested.current) break;
-      const response = await fetch(`/api/campaigns/${campaignId}/start`, { method: "POST" });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) { setMessage(body.error ?? "Envio interrompido"); break; }
+      let response: Response | null = null;
+      let body: any = {};
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
+        try {
+          response = await fetch(`/api/campaigns/${campaignId}/start`, { method: "POST" });
+          body = await response.json().catch(() => ({}));
+          if (response.ok || response.status < 500) break;
+        } catch { response = null; }
+        if (attempt < 3) {
+          setMessage(`Conexao instavel. Tentativa ${attempt + 1} de 3 em alguns segundos...`);
+          await new Promise((resolve) => window.setTimeout(resolve, 3000));
+        }
+      }
+      if (!response?.ok) {
+        setMessage(body.error ?? "Os envios foram interrompidos por falha de conexao. A campanha continua em andamento e sera retomada ao reabrir esta tela.");
+        break;
+      }
       totalSent += body.sent ?? 0; totalFailed += body.failed ?? 0;
-      setMessage(`${totalSent} enviadas, ${body.remaining ?? 0} na fila${totalFailed ? `, ${totalFailed} com erro` : ""}`);
+      setMessage(`${totalSent} enviadas, ${body.remaining ?? 0} na fila${totalFailed ? `, ${totalFailed} com erro${body.failureReason ? `. Ultimo erro: ${body.failureReason}` : ""}` : ""}`);
       window.dispatchEvent(new Event("queue-updated"));
       if (body.complete || !body.processed) break;
       if (body.nextDelayMs > 0) {
@@ -61,7 +76,8 @@ export function OperationControls({ campaignId, status, tested, totalMessages }:
     {status === "rascunho" && !tested && <button className="small secondary" disabled={!!busy || sending} onClick={() => run("test")}>{busy === "test" ? "Enviando teste..." : "1. Enviar teste"}</button>}
     {status === "rascunho" && tested && <button className="small" disabled={!!busy || sending} onClick={() => run("authorize")}>{busy === "authorize" ? "Autorizando..." : "2. Autorizar campanha"}</button>}
     {status === "pausada" && <button className="small" disabled={!!busy || sending} onClick={() => run("authorize")}>{busy === "authorize" ? "Retomando..." : "Retomar envio"}</button>}
-    {(status === "autorizada" || status === "processando") && <button className="small whatsapp-action" disabled={sending || !!busy} onClick={startSending}>{sending ? "Enviando..." : status === "autorizada" ? "3. Iniciar envios" : "Continuar envios"}</button>}
+    {status === "autorizada" && scheduledForFuture && <span className="action-message">Aguardando o horario programado. Use Editar agendamento se precisar alterar.</span>}
+    {((status === "autorizada" && !scheduledForFuture) || status === "processando") && <button className="small whatsapp-action" disabled={sending || !!busy} onClick={startSending}>{sending ? "Enviando ate concluir..." : status === "autorizada" ? "3. Iniciar envios" : "Continuar envios"}</button>}
     {(status === "autorizada" || status === "processando") && <button className="small secondary" disabled={!!busy} onClick={() => interrupt("pause")}>{busy === "pause" ? "Suspendendo..." : "Suspender e retomar depois"}</button>}
     {(["autorizada","processando","pausada"].includes(status)) && <button className="small danger" disabled={!!busy} onClick={() => interrupt("stop")}>{busy === "stop" ? "Parando..." : "Parar definitivamente"}</button>}
     {message && <span className="action-message">{message}</span>}

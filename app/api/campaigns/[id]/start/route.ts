@@ -9,8 +9,23 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const auth = await requireApiUser();
   if (!auth) return NextResponse.json({ error: "Nao autorizado" }, { status: 401 });
   const { id } = await params;
-  const { data: campaign } = await auth.supabase.from("campaigns").select("id,status,created_by,scheduled_at,group_id,delay_min_seconds,delay_max_seconds,batch_size,batch_pause_minutes").eq("id", id).eq("created_by", auth.userId).single();
-  if (!campaign || !["autorizada", "processando"].includes(campaign.status)) return NextResponse.json({ error: "A campanha precisa estar autorizada para iniciar os envios" }, { status: 409 });
+  const { data: campaign } = await auth.supabase.from("campaigns").select("id,status,created_by,scheduled_at,group_id,delay_min_seconds,delay_max_seconds,batch_size,batch_pause_minutes").eq("id", id).maybeSingle();
+  if (!campaign || !auth.access.groups.some((group) => group.group_id === campaign.group_id)) {
+    return NextResponse.json({ error: "Campanha nao encontrada ou seu usuario nao possui acesso ao grupo desta campanha" }, { status: 404 });
+  }
+  if (campaign.created_by !== auth.userId && !["master", "admin"].includes(auth.access.profile.role)) {
+    return NextResponse.json({ error: "Somente o criador ou um administrador do grupo pode iniciar e retomar esta campanha" }, { status: 403 });
+  }
+  if (!["autorizada", "processando"].includes(campaign.status)) {
+    const guidance: Record<string,string> = {
+      rascunho: "Envie o teste e autorize a campanha antes de iniciar.",
+      pausada: "Use Retomar envio para liberar a fila antes de continuar.",
+      concluida: "Todas as mensagens desta campanha ja foram processadas.",
+      erro: "A campanha terminou com falhas. Consulte Fila e historico para ver os erros.",
+      cancelada: "A campanha foi parada definitivamente e nao pode ser retomada.",
+    };
+    return NextResponse.json({ error: guidance[campaign.status] ?? `A campanha esta no status ${campaign.status} e nao pode iniciar envios.` }, { status: 409 });
+  }
   if (campaign.scheduled_at && new Date(campaign.scheduled_at).getTime() > Date.now()) return NextResponse.json({ error: "Campanha agendada para uma data futura", scheduledAt: campaign.scheduled_at }, { status: 409 });
 
   const admin = createAdminClient();
@@ -52,5 +67,5 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const { count: completed } = await admin.from("message_queue").select("id", { count: "exact", head: true }).eq("campaign_id", id).eq("status", "enviado");
   const atBatchBoundary = (completed ?? 0) > 0 && (completed ?? 0) % (campaign.batch_size ?? 100) === 0;
   const nextDelayMs = atBatchBoundary ? (campaign.batch_pause_minutes ?? 10) * 60000 : randomDelayMs;
-  return NextResponse.json({ processed: 1, sent: result.success ? 1 : 0, failed: result.success ? 0 : 1, remaining: remaining ?? 0, complete: (remaining ?? 0) === 0, nextDelayMs });
+  return NextResponse.json({ processed: 1, sent: result.success ? 1 : 0, failed: result.success ? 0 : 1, failureReason: result.success ? null : result.error, remaining: remaining ?? 0, complete: (remaining ?? 0) === 0, nextDelayMs });
 }
