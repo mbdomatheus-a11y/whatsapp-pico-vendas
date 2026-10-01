@@ -174,6 +174,12 @@ export class EvolutionProvider implements MessagingProvider {
   async deleteInstance() {
     const env = serverEnv();
     const response = await fetch(`${env.evolutionBaseUrl}/instance/delete/${encodeURIComponent(this.instance())}`, { method: "DELETE", headers: headers(), cache: "no-store", signal: AbortSignal.timeout(20_000) });
-    if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body?.message ?? `HTTP ${response.status}`); }
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      // O cadastro pode existir apenas no portal quando a criacao da instancia falhou.
+      // Nesse caso nao ha nada para apagar na Evolution e a exclusao local deve continuar.
+      if (isMissingInstance(body, response.status)) return;
+      throw new Error(providerError(body, response.status, "Nao foi possivel remover a conexao"));
+    }
   }
 }
