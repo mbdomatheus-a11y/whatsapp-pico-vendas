@@ -27,7 +27,7 @@ function isMissingInstance(body: any, status: number) {
   if (status !== 404) return false;
   const detail = body?.response?.message?.[0] ?? body?.response?.message ?? body?.message ?? body?.error ?? "";
   const message = typeof detail === "string" ? detail : JSON.stringify(detail);
-  return /instance.*not found|instancia.*nao encontr/i.test(message);
+  return /instance.*(?:not found|does not exist)|instancia.*nao (?:existe|encontr)/i.test(message);
 }
 
 export class EvolutionProvider implements MessagingProvider {
