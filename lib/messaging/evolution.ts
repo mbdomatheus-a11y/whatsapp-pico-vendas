@@ -139,16 +139,17 @@ export class EvolutionProvider implements MessagingProvider {
     );
     if (hasConnectionData) return { result: creation, created: true };
 
-    // Algumas versoes confirmam a criacao antes de disponibilizar a instancia
-    // para /connect. Aguarde a propagacao para nao exibir "Instance not found".
-    for (let attempt = 0; attempt < 5; attempt += 1) {
-      await new Promise((resolve) => setTimeout(resolve, 400));
-      if (await this.instanceExists()) {
-        return { result: await this.connect(), created: true };
-      }
+    // A Evolution 2.3.6 pode levar varios segundos para propagar uma instancia.
+    // Consulte e tente conectar novamente sem devolver o erro tecnico ao usuario.
+    let lastError: unknown;
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 750));
+      try {
+        if (await this.instanceExists()) return { result: await this.connect(), created: true };
+      } catch (error) { lastError = error; }
     }
 
-    throw new Error(`A conexao ${this.instance()} foi criada, mas ainda nao ficou disponivel. Aguarde alguns segundos e tente Conectar / QR novamente.`);
+    throw new Error(`A conta foi cadastrada, mas a estacao local ainda nao confirmou a instancia ${this.instance()}. Aguarde alguns segundos e use Conectar / QR novamente.${lastError instanceof Error ? ` Detalhe: ${lastError.message}` : ""}`);
   }
 
   async connect() {

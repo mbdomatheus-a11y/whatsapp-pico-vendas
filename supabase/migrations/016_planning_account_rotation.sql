@@ -12,3 +12,5 @@ alter table public.planning_sessions
 update public.planning_sessions
 set whatsapp_account_ids = array[whatsapp_account_id]
 where cardinality(whatsapp_account_ids) = 0;
+
+notify pgrst, 'reload schema';

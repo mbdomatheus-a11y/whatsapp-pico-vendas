@@ -16,15 +16,28 @@ export async function parseSegmentationWorkbook(buffer: Buffer) {
   await workbook.xlsx.load(buffer as unknown as ExcelJS.Buffer);
   const sheet = workbook.worksheets[0];
   if (!sheet) throw new Error("A planilha de segmentacao nao possui abas");
+  const codeHeaders = new Set(["COD", "COD_LOJA", "CODIGO_LOJA", "CODIGO_DA_LOJA"]);
+  let headerRow = 0;
+  let codeColumn = 0;
+  for (let row = 1; row <= Math.min(sheet.rowCount, 50) && !codeColumn; row += 1) {
+    for (let column = 1; column <= sheet.columnCount; column += 1) {
+      if (codeHeaders.has(normalizeHeader(text(sheet.getCell(row, column).value)))) {
+        headerRow = row;
+        codeColumn = column;
+        break;
+      }
+    }
+  }
+  if (!codeColumn) throw new Error("Nao encontrei a coluna COD, COD_LOJA ou CODIGO_LOJA na planilha de segmentacao");
   const headers: string[] = [];
-  for (let column = 1; column <= sheet.columnCount; column += 1) headers[column] = normalizeHeader(text(sheet.getCell(1, column).value));
-  if (!["COD", "COD_LOJA", "CODIGO_LOJA"].includes(headers[1])) throw new Error("A primeira coluna da segmentacao deve ser COD ou COD_LOJA");
+  for (let column = 1; column <= sheet.columnCount; column += 1) headers[column] = normalizeHeader(text(sheet.getCell(headerRow, column).value));
   const byStore = new Map<string, Record<string, string>>();
-  for (let row = 2; row <= sheet.rowCount; row += 1) {
-    const code = text(sheet.getCell(row, 1).value).replace(/\.0$/, "").replace(/^0+/, "");
+  for (let row = headerRow + 1; row <= sheet.rowCount; row += 1) {
+    const code = text(sheet.getCell(row, codeColumn).value).replace(/\.0$/, "").replace(/^0+/, "");
     if (!code) continue;
     const values: Record<string, string> = {};
-    for (let column = 2; column <= headers.length; column += 1) {
+    for (let column = 1; column <= sheet.columnCount; column += 1) {
+      if (column === codeColumn) continue;
       const key = headers[column];
       const value = text(sheet.getCell(row, column).value);
       if (key && value) values[key] = value;

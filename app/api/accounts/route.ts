@@ -35,15 +35,18 @@ export async function POST(request: Request) {
   const { count } = await admin.from("whatsapp_accounts").select("id", { count: "exact", head: true }).eq("organization_id", auth.access.profile.organization_id).eq("enabled", true);
   if ((count ?? 0) >= 10) return NextResponse.json({ error: "O portal permite no maximo 10 numeros ativos" }, { status: 400 });
   try {
-    const provider = new EvolutionProvider(instanceName);
-    const connection = await provider.prepareConnection();
     const accountWrite = existing
       ? admin.from("whatsapp_accounts").update({ label, phone_number: phoneNumber, enabled: true, created_by: auth.userId }).eq("id", existing.id)
       : admin.from("whatsapp_accounts").insert({ label, phone_number: phoneNumber, instance_name: instanceName, created_by: auth.userId, organization_id: auth.access.profile.organization_id });
     const { data, error } = await accountWrite.select("id,label,phone_number,instance_name,enabled").single();
     if (error) throw new Error(error.message);
-    const result = connection.result;
     await writeAudit({ actorId: auth.userId, organizationId: auth.access.profile.organization_id, action: existing ? "whatsapp_account_reactivated" : "whatsapp_account_created", entityType: "whatsapp_account", entityId: data.id, metadata: { label, phoneSuffix: phoneNumber.slice(-4) } });
-    return NextResponse.json({ account: data, qr: result.base64 ?? result.qrcode?.base64 ?? null, pairingCode: result.pairingCode ?? null });
+    try {
+      const connection = await new EvolutionProvider(instanceName).prepareConnection();
+      const result = connection.result;
+      return NextResponse.json({ account: data, qr: result.base64 ?? result.qrcode?.base64 ?? null, pairingCode: result.pairingCode ?? null });
+    } catch (connectionError) {
+      return NextResponse.json({ account: data, warning: connectionError instanceof Error ? connectionError.message : "A instancia ainda nao respondeu. Use Conectar / QR novamente." }, { status: 201 });
+    }
   } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Falha ao criar conta" }, { status: 400 }); }
 }
