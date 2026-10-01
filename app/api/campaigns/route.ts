@@ -72,13 +72,14 @@ export async function POST(request: Request) {
   if (!messages.length || messages.length > 500) return NextResponse.json({ error: "A campanha deve possuir entre 1 e 500 destinatarios" }, { status: 400 });
   if (messages.length > 250 && form.get("riskAccepted") !== "on") return NextResponse.json({ error: "Confirme o fracionamento e o risco de bloqueio para campanhas acima de 250 mensagens" }, { status: 400 });
   if (messages.some((m) => !m.gerente_id || !phonePattern.test(m.telefone) || !m.mensagem?.trim())) return NextResponse.json({ error: "Mensagem invalida" }, { status: 400 });
-  const { data: settings } = await admin.from("system_settings").select("delay_min_seconds,delay_max_seconds,batch_size,batch_pause_minutes").eq("organization_id", auth.access.profile.organization_id).single();
-  const { data: campaign, error } = await admin.from("campaigns").insert({ name, created_by: auth.userId, total_messages: messages.length, whatsapp_account_id: accountIds[0], whatsapp_account_ids: accountIds, account_mode: accountMode, group_id: groupId, scheduled_at: scheduledAt?.toISOString() ?? null, confirmation_enabled: confirmationEnabled, delay_min_seconds: settings?.delay_min_seconds ?? 1, delay_max_seconds: settings?.delay_max_seconds ?? 30, batch_size: messages.length > 250 ? Math.min(settings?.batch_size ?? 100, 100) : settings?.batch_size ?? 100, batch_pause_minutes: settings?.batch_pause_minutes ?? 10 }).select("id").single();
+  const { data: settings } = await admin.from("system_settings").select("delay_min_seconds,delay_max_seconds,batch_size,batch_pause_minutes,account_rotation_batch_size").eq("organization_id", auth.access.profile.organization_id).single();
+  const rotationBatchSize = accountMode === "round_robin" ? settings?.account_rotation_batch_size ?? 1 : 1;
+  const { data: campaign, error } = await admin.from("campaigns").insert({ name, created_by: auth.userId, total_messages: messages.length, whatsapp_account_id: accountIds[0], whatsapp_account_ids: accountIds, account_mode: accountMode, account_rotation_batch_size: rotationBatchSize, group_id: groupId, scheduled_at: scheduledAt?.toISOString() ?? null, confirmation_enabled: confirmationEnabled, delay_min_seconds: settings?.delay_min_seconds ?? 1, delay_max_seconds: settings?.delay_max_seconds ?? 30, batch_size: messages.length > 250 ? Math.min(settings?.batch_size ?? 100, 100) : settings?.batch_size ?? 100, batch_pause_minutes: settings?.batch_pause_minutes ?? 10 }).select("id").single();
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
   const rows = messages.map((m, index) => ({
     campaign_id: campaign.id, gerente_id: m.gerente_id, telefone: m.telefone,
     mensagem: m.mensagem.trim(), sequence_number: index + 1,
-    whatsapp_account_id: accountIds[index % accountIds.length],
+    whatsapp_account_id: accountIds[Math.floor(index / rotationBatchSize) % accountIds.length],
     idempotency_key: `${campaign.id}:${m.gerente_id}:${m.telefone}`,
   }));
   const { error: queueError } = await admin.from("message_queue").insert(rows);
@@ -89,7 +90,7 @@ export async function POST(request: Request) {
     if (uploadError) return NextResponse.json({ error: `Falha no anexo ${file.name}: ${uploadError.message}` }, { status: 400 });
     await admin.from("campaign_attachments").insert({ campaign_id: campaign.id, storage_path: path, file_name: file.name, mime_type: file.type, size_bytes: file.size });
   }
-  await writeAudit({ actorId: auth.userId, organizationId: auth.access.profile.organization_id, action: scheduledAt ? "campaign_scheduled" : "campaign_created", entityType: "campaign", entityId: campaign.id, metadata: { total: messages.length, confirmationEnabled, attachments: files.map((file) => file.name), planningSessionId: planningSessionId || null, accountMode, accountCount: accountIds.length } });
+  await writeAudit({ actorId: auth.userId, organizationId: auth.access.profile.organization_id, groupId, action: scheduledAt ? "campaign_scheduled" : "campaign_created", entityType: "campaign", entityId: campaign.id, metadata: { total: messages.length, confirmationEnabled, attachments: files.map((file) => file.name), planningSessionId: planningSessionId || null, accountMode, accountCount: accountIds.length, accountRotationBatchSize: rotationBatchSize } });
   if (planningSessionId) await admin.from("planning_sessions").update({ status: "convertida", campaign_id: campaign.id, updated_at: new Date().toISOString() }).eq("id", planningSessionId);
   if (request.headers.get("accept")?.includes("application/json")) return NextResponse.json({ ok: true, campaignId: campaign.id, redirectTo: "/campanhas" });
   return NextResponse.redirect(new URL("/campanhas", request.url), 303);

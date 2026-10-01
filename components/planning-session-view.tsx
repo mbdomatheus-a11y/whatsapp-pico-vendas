@@ -5,7 +5,7 @@ import { CampaignDraftForm } from "@/components/campaign-draft-form";
 
 type SavedSession = { id: string; name: string; weekday: string; status: string; group_id: string; whatsapp_account_id: string; source_file_name: string; segmentation_file_name?: string | null; selected_filters: Record<string,string>; preview_payload: PreviewResult; use_schedule?: boolean; expires_at?: string | null; campaign_id?: string | null; accountLabel?: string };
 
-export function PlanningSessionView({ session, accounts }: { session: SavedSession; accounts: { id: string; label: string }[] }) {
+export function PlanningSessionView({ session, accounts }: { session: SavedSession; accounts: { id: string; label: string; phone_number?: string | null }[] }) {
   const [filters, setFilters] = useState<Record<string,string>>(session.selected_filters ?? {});
   const [busy, setBusy] = useState(false); const [message, setMessage] = useState("");
   const useSchedule = session.use_schedule ?? session.preview_payload.useSchedule ?? true;

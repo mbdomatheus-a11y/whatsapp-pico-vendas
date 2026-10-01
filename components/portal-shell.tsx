@@ -11,6 +11,7 @@ const NAVIGATION = [
   ["planejamento", "/planejamento", "Preparar envio"],
   ["campanhas", "/campanhas", "Campanhas"],
   ["fila", "/fila", "Fila e historico"],
+  ["relatorios", "/relatorios", "Relatorios"],
   ["configuracoes", "/configuracoes", "Configuracoes"],
 ] as const;
 

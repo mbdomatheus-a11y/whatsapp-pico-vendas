@@ -4,7 +4,13 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 type Message = { gerente_id: string; telefone: string; mensagem: string };
-type Account = { id: string; label: string };
+type Account = { id: string; label: string; phone_number?: string | null };
+
+function accountLabel(account: Account) {
+  const digits = String(account.phone_number ?? "").replace(/\D/g, "").replace(/^55/, "");
+  const phone = digits.length === 11 ? `(${digits.slice(0,2)}) ${digits.slice(2,7)}-${digits.slice(7)}` : "numero pendente";
+  return `${account.label} | ${phone}`;
+}
 
 function brasiliaInputValue(date: Date) {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -78,9 +84,9 @@ export function CampaignDraftForm({
   return <form onSubmit={submit} encType="multipart/form-data" className="stack">
     {accounts ? <fieldset className="account-choice"><legend>Numeros de envio</legend>
       <label className="check"><input type="radio" checked={accountMode === "single"} onChange={() => setAccountMode("single")}/><span><strong>Usar um unico numero</strong><small>Todas as mensagens sairao pela conta escolhida.</small></span></label>
-      {accountMode === "single" && <label>Conta de envio<select value={singleAccountId} onChange={(event) => setSingleAccountId(event.target.value)} required><option value="">Selecione</option>{accounts.map((account) => <option key={account.id} value={account.id}>{account.label}</option>)}</select></label>}
-      <label className="check"><input type="radio" checked={accountMode === "round_robin"} disabled={accounts.length < 2} onChange={() => setAccountMode("round_robin")}/><span><strong>Alternar entre numeros</strong><small>As mensagens serao distribuidas em sequencia entre as contas marcadas.</small></span></label>
-      {accountMode === "round_robin" && <div className="account-selection-grid">{accounts.map((account) => <label className="check" key={account.id}><input type="checkbox" checked={rotatingAccountIds.includes(account.id)} onChange={(event) => setRotatingAccountIds((current) => event.target.checked ? [...current, account.id] : current.filter((id) => id !== account.id))}/>{account.label}</label>)}</div>}
+      {accountMode === "single" && <label>Conta de envio<select value={singleAccountId} onChange={(event) => setSingleAccountId(event.target.value)} required><option value="">Selecione</option>{accounts.map((account) => <option key={account.id} value={account.id}>{accountLabel(account)}</option>)}</select></label>}
+      <label className="check"><input type="radio" checked={accountMode === "round_robin"} disabled={accounts.length < 2} onChange={() => setAccountMode("round_robin")}/><span><strong>Alternar entre numeros</strong><small>O portal troca de conta apos a quantidade de mensagens definida em Configuracoes.</small></span></label>
+      {accountMode === "round_robin" && <div className="account-selection-grid">{accounts.map((account) => <label className="check" key={account.id}><input type="checkbox" checked={rotatingAccountIds.includes(account.id)} onChange={(event) => setRotatingAccountIds((current) => event.target.checked ? [...current, account.id] : current.filter((id) => id !== account.id))}/>{accountLabel(account)}</label>)}</div>}
       {accounts.length < 2 && <small className="muted">Conecte pelo menos dois numeros em Configuracoes para ativar a alternancia.</small>}
     </fieldset> : <><input type="hidden" name="accountMode" value="single"/><input type="hidden" name="accountIds" value={accountId}/></>}
     <label>Nome da campanha<input name="name" defaultValue={defaultName} required maxLength={120}/></label>
