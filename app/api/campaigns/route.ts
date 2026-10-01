@@ -17,6 +17,7 @@ export async function POST(request: Request) {
   const requestedAccountIds = [...new Set(form.getAll("accountIds").map(String).map((value) => value.trim()).filter(Boolean))];
   const legacyAccountId = String(form.get("accountId") ?? "").trim();
   const accountIds = requestedAccountIds.length ? requestedAccountIds : legacyAccountId ? [legacyAccountId] : [];
+  const requestedRotationBatchSize = Number(form.get("accountRotationBatchSize"));
   const preferredGroup = auth.access.preference?.selected_group_id ?? auth.access.groups[0]?.group_id;
   const groupId = String(form.get("groupId") ?? preferredGroup ?? "");
   const confirmationEnabled = form.get("confirmationEnabled") === "on";
@@ -33,6 +34,7 @@ export async function POST(request: Request) {
   if (accountIds.length > 10) return NextResponse.json({ error: "Selecione no maximo 10 numeros" }, { status: 400 });
   if (accountMode === "single" && accountIds.length !== 1) return NextResponse.json({ error: "Escolha um unico numero para esta campanha" }, { status: 400 });
   if (accountMode === "round_robin" && accountIds.length < 2) return NextResponse.json({ error: "Selecione pelo menos dois numeros para alternar os envios" }, { status: 400 });
+  if (accountMode === "round_robin" && (!Number.isInteger(requestedRotationBatchSize) || requestedRotationBatchSize < 1 || requestedRotationBatchSize > 500)) return NextResponse.json({ error: "Informe entre 1 e 500 mensagens por numero antes de alternar" }, { status: 400 });
   if (!planningSessionId && (!messages.length || messages.length > 500)) return NextResponse.json({ error: "Campanha invalida" }, { status: 400 });
   if (!auth.access.groups.some((group) => group.group_id === groupId)) return NextResponse.json({ error: "Grupo invalido" }, { status: 400 });
   if (scheduleRequested && !scheduledAt) return NextResponse.json({ error: "Informe uma data e um horario validos para o agendamento" }, { status: 400 });
@@ -73,7 +75,7 @@ export async function POST(request: Request) {
   if (messages.length > 250 && form.get("riskAccepted") !== "on") return NextResponse.json({ error: "Confirme o fracionamento e o risco de bloqueio para campanhas acima de 250 mensagens" }, { status: 400 });
   if (messages.some((m) => !m.gerente_id || !phonePattern.test(m.telefone) || !m.mensagem?.trim())) return NextResponse.json({ error: "Mensagem invalida" }, { status: 400 });
   const { data: settings } = await admin.from("system_settings").select("delay_min_seconds,delay_max_seconds,batch_size,batch_pause_minutes,account_rotation_batch_size").eq("organization_id", auth.access.profile.organization_id).single();
-  const rotationBatchSize = accountMode === "round_robin" ? settings?.account_rotation_batch_size ?? 1 : 1;
+  const rotationBatchSize = accountMode === "round_robin" ? requestedRotationBatchSize : 1;
   const { data: campaign, error } = await admin.from("campaigns").insert({ name, created_by: auth.userId, total_messages: messages.length, whatsapp_account_id: accountIds[0], whatsapp_account_ids: accountIds, account_mode: accountMode, account_rotation_batch_size: rotationBatchSize, group_id: groupId, scheduled_at: scheduledAt?.toISOString() ?? null, confirmation_enabled: confirmationEnabled, delay_min_seconds: settings?.delay_min_seconds ?? 1, delay_max_seconds: settings?.delay_max_seconds ?? 30, batch_size: messages.length > 250 ? Math.min(settings?.batch_size ?? 100, 100) : settings?.batch_size ?? 100, batch_pause_minutes: settings?.batch_pause_minutes ?? 10 }).select("id").single();
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
   const rows = messages.map((m, index) => ({

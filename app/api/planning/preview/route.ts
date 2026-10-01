@@ -26,6 +26,9 @@ export async function POST(request: Request) {
     const template = String(form.get("template") ?? SCHEDULE_MESSAGE_TEMPLATE).trim();
     const useSchedule = String(form.get("useSchedule") ?? "true") === "true";
     const accountId = String(form.get("accountId") ?? "");
+    const accountMode = form.get("accountMode") === "round_robin" ? "round_robin" : "single";
+    const accountIds = [...new Set(form.getAll("accountIds").map(String).filter(Boolean))];
+    const accountRotationBatchSize = Number(form.get("accountRotationBatchSize"));
     const groupId = String(form.get("groupId") ?? "");
     const name = String(form.get("name") ?? "").trim();
     if (!(file instanceof File) || !file.name.toLowerCase().endsWith(".xlsx")) throw new Error("Envie uma planilha no formato .xlsx");
@@ -34,8 +37,12 @@ export async function POST(request: Request) {
     if (!template || template.length > 3000) throw new Error("Modelo de mensagem invalido");
     if (!name || name.length > 120) throw new Error("Nome da preparacao invalido");
     if (!auth.access.groups.some((group) => group.group_id === groupId)) throw new Error("Grupo invalido");
-    const { data: account } = await auth.supabase.from("whatsapp_accounts").select("id").eq("id", accountId).eq("enabled", true).maybeSingle();
-    if (!account) throw new Error("Conta de envio invalida");
+    if (accountMode === "single" && accountIds.length !== 1) throw new Error("Escolha uma conta para o envio");
+    if (accountMode === "round_robin" && accountIds.length < 2) throw new Error("Selecione pelo menos duas contas para alternar");
+    if (accountIds.length > 10) throw new Error("Selecione no maximo 10 contas");
+    if (!Number.isInteger(accountRotationBatchSize) || accountRotationBatchSize < 1 || accountRotationBatchSize > 500) throw new Error("Informe entre 1 e 500 mensagens por conta antes de alternar");
+    const { data: availableAccounts } = await auth.supabase.from("whatsapp_accounts").select("id").in("id", accountIds).eq("enabled", true);
+    if ((availableAccounts ?? []).length !== accountIds.length) throw new Error("Uma ou mais contas de envio sao invalidas");
 
     const parsed = await parsePeakWorkbook(Buffer.from(await file.arrayBuffer()), day);
     const segmentation = segmentationFile instanceof File && segmentationFile.size > 0
@@ -102,6 +109,9 @@ export async function POST(request: Request) {
       group_id: groupId,
       created_by: auth.userId,
       whatsapp_account_id: accountId,
+      whatsapp_account_ids: accountIds,
+      account_mode: accountMode,
+      account_rotation_batch_size: accountMode === "round_robin" ? accountRotationBatchSize : 1,
       name,
       weekday: day,
       message_template: template,
@@ -112,7 +122,7 @@ export async function POST(request: Request) {
       expires_at: expiresAt,
     }).select("id").single();
     if (saveError || !session) throw new Error(saveError?.message ?? "Nao foi possivel salvar a preparacao");
-    await writeAudit({ actorId: auth.userId, organizationId: auth.access.profile.organization_id, action: "planning_session_created", entityType: "planning_session", entityId: session.id, metadata: { name, day, totalRows: parsed.rows.length, messages: messages.length, useSchedule, hasSegmentation: !!(segmentationFile instanceof File && segmentationFile.size > 0) } });
+    await writeAudit({ actorId: auth.userId, organizationId: auth.access.profile.organization_id, action: "planning_session_created", entityType: "planning_session", entityId: session.id, metadata: { name, day, totalRows: parsed.rows.length, messages: messages.length, useSchedule, hasSegmentation: !!(segmentationFile instanceof File && segmentationFile.size > 0), accountMode, accountCount: accountIds.length, accountRotationBatchSize } });
     return NextResponse.json({ sessionId: session.id, saved: true });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Falha ao preparar campanha" }, { status: 400 });

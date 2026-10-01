@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export default async function SavedPlanningPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params; const { access, groups, selectedGroupId } = await getPortalContext();
   const admin = createAdminClient();
-  const { data } = await admin.from("planning_sessions").select("id,name,weekday,status,group_id,whatsapp_account_id,source_file_name,segmentation_file_name,selected_filters,preview_payload,use_schedule,expires_at,campaign_id").eq("id", id).maybeSingle();
+  const { data } = await admin.from("planning_sessions").select("id,name,weekday,status,group_id,whatsapp_account_id,whatsapp_account_ids,account_mode,account_rotation_batch_size,source_file_name,segmentation_file_name,selected_filters,preview_payload,use_schedule,expires_at,campaign_id").eq("id", id).maybeSingle();
   if (!data || !access.groups.some((group) => group.group_id === data.group_id)) notFound();
   const { data: accounts } = await admin.from("whatsapp_accounts").select("id,label,phone_number").eq("organization_id", access.profile.organization_id).eq("enabled", true).order("created_at");
   const session = { ...data, selected_filters: (data.selected_filters ?? {}) as Record<string,string>, preview_payload: data.preview_payload as unknown as PreviewResult };

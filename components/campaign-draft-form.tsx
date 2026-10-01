@@ -22,7 +22,8 @@ function brasiliaInputValue(date: Date) {
 
 export function CampaignDraftForm({
   defaultName, groupId, messages, accountId, accounts, planningSessionId, editableMessages = false,
-  selectedFilters, requireAllRecipientsConfirmation = false,
+  selectedFilters, requireAllRecipientsConfirmation = false, defaultAccountMode = "single",
+  defaultAccountIds, defaultRotationBatchSize = 1,
 }: {
   defaultName: string;
   groupId: string;
@@ -33,12 +34,17 @@ export function CampaignDraftForm({
   editableMessages?: boolean;
   selectedFilters?: Record<string,string>;
   requireAllRecipientsConfirmation?: boolean;
+  defaultAccountMode?: "single"|"round_robin";
+  defaultAccountIds?: string[];
+  defaultRotationBatchSize?: number;
 }) {
   const router = useRouter();
   const defaultAccountId = accountId ?? accounts?.[0]?.id ?? "";
-  const [accountMode, setAccountMode] = useState<"single"|"round_robin">("single");
+  const initialAccountIds = defaultAccountIds?.length ? defaultAccountIds : defaultAccountId ? [defaultAccountId] : [];
+  const [accountMode, setAccountMode] = useState<"single"|"round_robin">(defaultAccountMode);
   const [singleAccountId, setSingleAccountId] = useState(defaultAccountId);
-  const [rotatingAccountIds, setRotatingAccountIds] = useState<string[]>(defaultAccountId ? [defaultAccountId] : []);
+  const [rotatingAccountIds, setRotatingAccountIds] = useState<string[]>(initialAccountIds);
+  const [rotationBatchSize, setRotationBatchSize] = useState(defaultRotationBatchSize);
   const [scheduleMode, setScheduleMode] = useState<"immediate"|"scheduled">("immediate");
   const [scheduledAt, setScheduledAt] = useState("");
   const [messageJson, setMessageJson] = useState(JSON.stringify(messages, null, editableMessages ? 2 : 0));
@@ -66,6 +72,7 @@ export function CampaignDraftForm({
       form.set("accountMode", accountMode);
       form.delete("accountIds");
       selectedAccountIds.forEach((id) => form.append("accountIds", id));
+      form.set("accountRotationBatchSize", String(rotationBatchSize));
       form.set("scheduleMode", scheduleMode);
       form.set("messages", messageJson);
       if (planningSessionId) {
@@ -86,7 +93,7 @@ export function CampaignDraftForm({
       <label className="check"><input type="radio" checked={accountMode === "single"} onChange={() => setAccountMode("single")}/><span><strong>Usar um unico numero</strong><small>Todas as mensagens sairao pela conta escolhida.</small></span></label>
       {accountMode === "single" && <label>Conta de envio<select value={singleAccountId} onChange={(event) => setSingleAccountId(event.target.value)} required><option value="">Selecione</option>{accounts.map((account) => <option key={account.id} value={account.id}>{accountLabel(account)}</option>)}</select></label>}
       <label className="check"><input type="radio" checked={accountMode === "round_robin"} disabled={accounts.length < 2} onChange={() => setAccountMode("round_robin")}/><span><strong>Alternar entre numeros</strong><small>O portal troca de conta apos a quantidade de mensagens definida em Configuracoes.</small></span></label>
-      {accountMode === "round_robin" && <div className="account-selection-grid">{accounts.map((account) => <label className="check" key={account.id}><input type="checkbox" checked={rotatingAccountIds.includes(account.id)} onChange={(event) => setRotatingAccountIds((current) => event.target.checked ? [...current, account.id] : current.filter((id) => id !== account.id))}/>{accountLabel(account)}</label>)}</div>}
+      {accountMode === "round_robin" && <><div className="account-selection-grid">{accounts.map((account) => <label className="check" key={account.id}><input type="checkbox" checked={rotatingAccountIds.includes(account.id)} onChange={(event) => setRotatingAccountIds((current) => event.target.checked ? [...current, account.id] : current.filter((id) => id !== account.id))}/>{accountLabel(account)}</label>)}</div><label>Mensagens por numero antes de alternar<input type="number" min="1" max="500" value={rotationBatchSize} onChange={(event) => setRotationBatchSize(Math.max(1, Math.min(500, Number(event.target.value) || 1)))}/><small>Exemplo: 10 envia dez mensagens pelo primeiro numero, dez pelo segundo e repete a sequencia.</small></label></>}
       {accounts.length < 2 && <small className="muted">Conecte pelo menos dois numeros em Configuracoes para ativar a alternancia.</small>}
     </fieldset> : <><input type="hidden" name="accountMode" value="single"/><input type="hidden" name="accountIds" value={accountId}/></>}
     <label>Nome da campanha<input name="name" defaultValue={defaultName} required maxLength={120}/></label>
