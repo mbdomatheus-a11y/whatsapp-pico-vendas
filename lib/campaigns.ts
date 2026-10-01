@@ -5,6 +5,7 @@ export function campaignStage(status: string, tested: boolean, scheduledAt?: str
   if (status === "autorizada") return "3. Autorizada, pronta para iniciar";
   if (status === "processando") return "4. Envios em andamento";
   if (status === "pausada") return "Pausada";
+  if (status === "cancelada") return "Parada definitivamente";
   if (status === "concluida") return "Concluida";
   if (status === "erro") return "Concluida com erros";
   return status;

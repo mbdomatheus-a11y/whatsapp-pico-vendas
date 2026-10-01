@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { writeAudit } from "@/lib/audit";
 
 type InputMessage = { gerente_id: string; telefone: string; mensagem: string };
+type PlanningMessage = InputMessage & { segmentos?: Record<string,string> };
 const phonePattern = /^\d{10,15}$/;
 
 export async function POST(request: Request) {
@@ -25,12 +26,11 @@ export async function POST(request: Request) {
   const scheduledAt = scheduleRequested && normalizedSchedule ? new Date(normalizedSchedule) : null;
   let messages: InputMessage[];
   try { messages = JSON.parse(String(form.get("messages") ?? "[]")); } catch { return NextResponse.json({ error: "JSON invalido" }, { status: 400 }); }
-  if (!name || !accountId || !Array.isArray(messages) || !messages.length || messages.length > 500) return NextResponse.json({ error: "Campanha invalida" }, { status: 400 });
+  if (!name || !accountId || !Array.isArray(messages)) return NextResponse.json({ error: "Campanha invalida" }, { status: 400 });
+  if (!planningSessionId && (!messages.length || messages.length > 500)) return NextResponse.json({ error: "Campanha invalida" }, { status: 400 });
   if (!auth.access.groups.some((group) => group.group_id === groupId)) return NextResponse.json({ error: "Grupo invalido" }, { status: 400 });
   if (scheduleRequested && !scheduledAt) return NextResponse.json({ error: "Informe uma data e um horario validos para o agendamento" }, { status: 400 });
   if (scheduledAt && (Number.isNaN(scheduledAt.getTime()) || scheduledAt.getTime() < Date.now() + 5 * 60_000)) return NextResponse.json({ error: "Escolha um horario de Brasilia com pelo menos 5 minutos de antecedencia" }, { status: 400 });
-  if (messages.length > 250 && form.get("riskAccepted") !== "on") return NextResponse.json({ error: "Confirme o fracionamento e o risco de bloqueio para campanhas acima de 250 mensagens" }, { status: 400 });
-  if (messages.some((m) => !m.gerente_id || !phonePattern.test(m.telefone) || !m.mensagem?.trim())) return NextResponse.json({ error: "Mensagem invalida" }, { status: 400 });
   const files = form.getAll("attachments").filter((item): item is File => item instanceof File && item.size > 0);
   const pdfs = files.filter((file) => file.type === "application/pdf"); const images = files.filter((file) => ["image/jpeg","image/png","image/webp"].includes(file.type));
   if (files.length !== pdfs.length + images.length || pdfs.length > 1 || images.length > 3 || files.some((file) => file.size > 10 * 1024 * 1024)) return NextResponse.json({ error: "Anexos invalidos: ate um PDF e tres imagens, com 10 MB cada" }, { status: 400 });
@@ -39,9 +39,32 @@ export async function POST(request: Request) {
   if (!account) return NextResponse.json({ error: "Conta de envio invalida" }, { status: 400 });
   const admin = createAdminClient();
   if (planningSessionId) {
-    const { data: planning } = await admin.from("planning_sessions").select("id,group_id,status").eq("id", planningSessionId).maybeSingle();
+    const { data: planning } = await admin.from("planning_sessions").select("id,group_id,status,segmentation_file_name,preview_payload,selected_filters").eq("id", planningSessionId).maybeSingle();
     if (!planning || planning.group_id !== groupId || planning.status !== "preparada") return NextResponse.json({ error: "Preparacao salva invalida ou ja utilizada" }, { status: 409 });
+    let requestedFilters: Record<string,string>;
+    try {
+      const parsed = JSON.parse(String(form.get("selectedFilters") ?? "{}"));
+      requestedFilters = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+    } catch { return NextResponse.json({ error: "Filtros da segmentacao invalidos" }, { status: 400 }); }
+    const preview = planning.preview_payload as { messages?: PlanningMessage[]; facets?: Record<string,string[]> };
+    if (!Array.isArray(preview?.messages)) return NextResponse.json({ error: "A preparacao nao possui uma previa valida" }, { status: 409 });
+    const filters = Object.fromEntries(Object.entries(requestedFilters).filter((entry): entry is [string,string] => typeof entry[1] === "string" && !!entry[1]));
+    for (const [key, value] of Object.entries(filters)) {
+      if (!preview.facets?.[key]?.includes(value)) return NextResponse.json({ error: `O filtro ${key} nao pertence a esta preparacao` }, { status: 400 });
+    }
+    if (planning.segmentation_file_name && !Object.keys(filters).length && form.get("allRecipientsAccepted") !== "on") return NextResponse.json({ error: "Ative ao menos um filtro ou confirme explicitamente o uso de todos os destinatarios" }, { status: 400 });
+    const selected = preview.messages.filter((item) => Object.entries(filters).every(([key, value]) => item.segmentos?.[key] === value));
+    const expectedCount = Number(form.get("expectedRecipientCount"));
+    if (!selected.length) return NextResponse.json({ error: "A segmentacao selecionada nao possui destinatarios" }, { status: 400 });
+    if (!Number.isInteger(expectedCount) || expectedCount !== selected.length) return NextResponse.json({ error: "A selecao mudou antes da criacao. Revise os filtros e tente novamente" }, { status: 409 });
+    messages = selected.map(({ gerente_id, telefone, mensagem }) => ({ gerente_id, telefone, mensagem }));
+    if (messages.length > 500) return NextResponse.json({ error: "A selecao possui mais de 500 destinatarios. Aplique filtros adicionais antes de criar a campanha" }, { status: 400 });
+    const { error: filterError } = await admin.from("planning_sessions").update({ selected_filters: filters, updated_at: new Date().toISOString() }).eq("id", planningSessionId).eq("status", "preparada");
+    if (filterError) return NextResponse.json({ error: "Nao foi possivel travar a segmentacao escolhida" }, { status: 409 });
   }
+  if (!messages.length || messages.length > 500) return NextResponse.json({ error: "A campanha deve possuir entre 1 e 500 destinatarios" }, { status: 400 });
+  if (messages.length > 250 && form.get("riskAccepted") !== "on") return NextResponse.json({ error: "Confirme o fracionamento e o risco de bloqueio para campanhas acima de 250 mensagens" }, { status: 400 });
+  if (messages.some((m) => !m.gerente_id || !phonePattern.test(m.telefone) || !m.mensagem?.trim())) return NextResponse.json({ error: "Mensagem invalida" }, { status: 400 });
   const { data: settings } = await admin.from("system_settings").select("delay_min_seconds,delay_max_seconds,batch_size,batch_pause_minutes").eq("organization_id", auth.access.profile.organization_id).single();
   const { data: campaign, error } = await admin.from("campaigns").insert({ name, created_by: auth.userId, total_messages: messages.length, whatsapp_account_id: accountId, group_id: groupId, scheduled_at: scheduledAt?.toISOString() ?? null, confirmation_enabled: confirmationEnabled, delay_min_seconds: settings?.delay_min_seconds ?? 1, delay_max_seconds: settings?.delay_max_seconds ?? 30, batch_size: messages.length > 250 ? Math.min(settings?.batch_size ?? 100, 100) : settings?.batch_size ?? 100, batch_pause_minutes: settings?.batch_pause_minutes ?? 10 }).select("id").single();
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
@@ -58,7 +81,7 @@ export async function POST(request: Request) {
     if (uploadError) return NextResponse.json({ error: `Falha no anexo ${file.name}: ${uploadError.message}` }, { status: 400 });
     await admin.from("campaign_attachments").insert({ campaign_id: campaign.id, storage_path: path, file_name: file.name, mime_type: file.type, size_bytes: file.size });
   }
-  await writeAudit({ actorId: auth.userId, organizationId: auth.access.profile.organization_id, action: scheduledAt ? "campaign_scheduled" : "campaign_created", entityType: "campaign", entityId: campaign.id, metadata: { total: messages.length, confirmationEnabled, attachments: files.map((file) => file.name) } });
+  await writeAudit({ actorId: auth.userId, organizationId: auth.access.profile.organization_id, action: scheduledAt ? "campaign_scheduled" : "campaign_created", entityType: "campaign", entityId: campaign.id, metadata: { total: messages.length, confirmationEnabled, attachments: files.map((file) => file.name), planningSessionId: planningSessionId || null } });
   if (planningSessionId) await admin.from("planning_sessions").update({ status: "convertida", campaign_id: campaign.id, updated_at: new Date().toISOString() }).eq("id", planningSessionId);
   if (request.headers.get("accept")?.includes("application/json")) return NextResponse.json({ ok: true, campaignId: campaign.id, redirectTo: "/campanhas" });
   return NextResponse.redirect(new URL("/campanhas", request.url), 303);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 type Message = { gerente_id: string; telefone: string; mensagem: string };
@@ -16,6 +16,7 @@ function brasiliaInputValue(date: Date) {
 
 export function CampaignDraftForm({
   defaultName, groupId, messages, accountId, accounts, planningSessionId, editableMessages = false,
+  selectedFilters, requireAllRecipientsConfirmation = false,
 }: {
   defaultName: string;
   groupId: string;
@@ -24,6 +25,8 @@ export function CampaignDraftForm({
   accounts?: Account[];
   planningSessionId?: string;
   editableMessages?: boolean;
+  selectedFilters?: Record<string,string>;
+  requireAllRecipientsConfirmation?: boolean;
 }) {
   const router = useRouter();
   const [scheduleMode, setScheduleMode] = useState<"immediate"|"scheduled">("immediate");
@@ -36,6 +39,7 @@ export function CampaignDraftForm({
     try { const parsed = JSON.parse(messageJson); return Array.isArray(parsed) ? parsed.length : 0; }
     catch { return 0; }
   }, [messageJson]);
+  useEffect(() => { setMessageJson(JSON.stringify(messages, null, editableMessages ? 2 : 0)); }, [messages, editableMessages]);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault(); setError("");
@@ -47,6 +51,10 @@ export function CampaignDraftForm({
       const form = new FormData(event.currentTarget);
       form.set("scheduleMode", scheduleMode);
       form.set("messages", messageJson);
+      if (planningSessionId) {
+        form.set("selectedFilters", JSON.stringify(selectedFilters ?? {}));
+        form.set("expectedRecipientCount", String(messageCount));
+      }
       if (scheduleMode === "immediate") form.delete("scheduledAt");
       const response = await fetch("/api/campaigns", { method: "POST", body: form, headers: { Accept: "application/json" } });
       const body = await response.json().catch(() => ({}));
@@ -69,6 +77,7 @@ export function CampaignDraftForm({
     </fieldset>
     <label>Anexos, ate 1 PDF e 3 imagens<input type="file" name="attachments" accept="application/pdf,image/jpeg,image/png,image/webp" multiple/></label>
     {messageCount > 250 && <label className="check warning"><input type="checkbox" name="riskAccepted" required/>Estou ciente do risco e aceito o fracionamento em lotes de ate 100.</label>}
+    {requireAllRecipientsConfirmation && <label className="check warning"><input type="checkbox" name="allRecipientsAccepted" required/>Nenhum filtro esta ativo. Confirmo que desejo usar todos os {messageCount} destinatarios da base.</label>}
     {error && <div className="alert error" role="alert">{error}</div>}
     <button type="submit" disabled={busy || !messageCount}>{busy ? "Criando campanha..." : "Avancar e criar rascunho"}</button>
   </form>;

@@ -10,7 +10,8 @@ export function PlanningSessionView({ session }: { session: SavedSession }) {
   const [busy, setBusy] = useState(false); const [message, setMessage] = useState("");
   const useSchedule = session.use_schedule ?? session.preview_payload.useSchedule ?? true;
   const filtered = useMemo(() => session.preview_payload.messages.filter((item) => Object.entries(filters).every(([key,value]) => !value || item.segmentos?.[key] === value)), [filters, session.preview_payload.messages]);
-  const queueMessages = filtered.map(({ gerente_id, telefone, mensagem }) => ({ gerente_id, telefone, mensagem }));
+  const hasActiveFilter = Object.values(filters).some(Boolean);
+  const queueMessages = useMemo(() => filtered.map(({ gerente_id, telefone, mensagem }) => ({ gerente_id, telefone, mensagem })), [filtered]);
   async function saveFilters() {
     setBusy(true); setMessage("");
     const response = await fetch(`/api/planning/sessions/${session.id}`, { method:"PATCH", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ filters }) });
@@ -29,6 +30,6 @@ export function PlanningSessionView({ session }: { session: SavedSession }) {
       {session.preview_payload.warnings.length > 0 && <details><summary>Ver alertas da importacao</summary><ul>{session.preview_payload.warnings.slice(0,50).map((warning,index) => <li key={index}>{warning}</li>)}</ul></details>}
       <div className="table-wrap"><table><thead><tr><th>Destinatario</th><th>Faixa</th>{useSchedule && <th>Equipe</th>}<th>Mensagem</th></tr></thead><tbody>{filtered.slice(0,30).map((item) => <tr key={`${item.gerente_id}-${item.telefone}`}><td>{item.gerente_id}<br/><span className="muted">{item.loja}</span></td><td>{item.faixa_pico}</td>{useSchedule && <td>{item.colaboradores_no_pico ?? "Sem escala"}</td>}<td className="message-preview">{item.mensagem}</td></tr>)}</tbody></table></div>{filtered.length > 30 && <p className="muted">Mostrando 30 de {filtered.length} mensagens.</p>}
     </section>
-    {session.status === "convertida" ? <section className="panel"><div className="confirmation-result">Esta preparacao ja foi convertida em campanha.</div>{session.campaign_id && <a className="button secondary" href="/campanhas">Abrir campanhas</a>}</section> : <section className="panel next-step-panel"><div><p className="step-kicker">Etapa 4</p><h2>Criar campanha em rascunho</h2><p className="muted">Nada sera enviado. Depois, a campanha ainda exigira teste, autorizacao e inicio manual.</p></div><CampaignDraftForm defaultName={session.name} groupId={session.group_id} accountId={session.whatsapp_account_id} planningSessionId={session.id} messages={queueMessages}/></section>}
+    {session.status === "convertida" ? <section className="panel"><div className="confirmation-result">Esta preparacao ja foi convertida em campanha.</div>{session.campaign_id && <a className="button secondary" href="/campanhas">Abrir campanhas</a>}</section> : <section className="panel next-step-panel"><div><p className="step-kicker">Etapa 4</p><h2>Criar campanha em rascunho</h2><p className="muted">O servidor reconstruira a fila usando somente os filtros exibidos acima. Nada sera enviado antes do teste, autorizacao e inicio manual.</p></div><CampaignDraftForm defaultName={session.name} groupId={session.group_id} accountId={session.whatsapp_account_id} planningSessionId={session.id} messages={queueMessages} selectedFilters={filters} requireAllRecipientsConfirmation={!!session.segmentation_file_name && !hasActiveFilter}/></section>}
   </>;
 }
