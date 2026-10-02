@@ -23,7 +23,9 @@ export async function POST(request: Request) {
     const file = form.get("file");
     const segmentationFile = form.get("segmentationFile");
     const day = String(form.get("day") ?? "") as Weekday;
-    const template = String(form.get("template") ?? SCHEDULE_MESSAGE_TEMPLATE).trim();
+    const templates = form.getAll("templates").map(String).map((item) => item.trim()).filter(Boolean);
+    if (!templates.length) templates.push(String(form.get("template") ?? SCHEDULE_MESSAGE_TEMPLATE).trim());
+    const template = templates[0];
     const useSchedule = String(form.get("useSchedule") ?? "true") === "true";
     const accountId = String(form.get("accountId") ?? "");
     const accountMode = form.get("accountMode") === "round_robin" ? "round_robin" : "single";
@@ -34,7 +36,7 @@ export async function POST(request: Request) {
     if (!(file instanceof File) || !file.name.toLowerCase().endsWith(".xlsx")) throw new Error("Envie uma planilha no formato .xlsx");
     if (file.size > 8 * 1024 * 1024) throw new Error("A planilha deve ter no maximo 8 MB");
     if (!WEEKDAYS.includes(day)) throw new Error("Dia da semana invalido");
-    if (!template || template.length > 3000) throw new Error("Modelo de mensagem invalido");
+    if (templates.length > 5 || templates.some((item) => !item || item.length > 3000)) throw new Error("Informe entre 1 e 5 modelos validos, com ate 3000 caracteres cada");
     if (!name || name.length > 120) throw new Error("Nome da preparacao invalido");
     if (!auth.access.groups.some((group) => group.group_id === groupId)) throw new Error("Grupo invalido");
     if (accountMode === "single" && accountIds.length !== 1) throw new Error("Escolha uma conta para o envio");
@@ -69,11 +71,14 @@ export async function POST(request: Request) {
         ggl: row.ggl, regional: row.regional, cod_loja: row.storeCode, nome_loja: row.storeName,
         dia: day, faixa_pico: row.peakWindow, colaboradores_pico: useSchedule ? (planned ?? "SEM ESCALA") : "NAO UTILIZADO",
       };
-      const messageTemplate = useSchedule && planned == null && template === SCHEDULE_MESSAGE_TEMPLATE ? NO_SCHEDULE_MESSAGE_TEMPLATE : template;
+      const messageVariant = (messages.length % templates.length) + 1;
+      const selectedTemplate = templates[messageVariant - 1];
+      const messageTemplate = useSchedule && planned == null && selectedTemplate === SCHEDULE_MESSAGE_TEMPLATE ? NO_SCHEDULE_MESSAGE_TEMPLATE : selectedTemplate;
       messages.push({
         gerente_id: `LOJA-${row.storeCode}`, telefone: row.phone, mensagem: render(messageTemplate, values), loja: row.storeName,
         faixa_pico: row.peakWindow, colaboradores_no_pico: planned, media_colaboradores_dia: metrics?.averageDay ?? null,
         segmentos: { TIPO: "GERENTE", REGIONAL: segments.REGIONAL ?? row.regional, GGL: segments.GGL ?? row.ggl, ...segments },
+        message_variant: messageVariant,
       });
       let directorPhone = String(segments.TELEFONE_DIRETOR ?? segments.DIRETOR_TELEFONE ?? "").replace(/\D/g, "");
       if (directorPhone.length === 10 || directorPhone.length === 11) directorPhone = `55${directorPhone}`;
@@ -99,7 +104,7 @@ export async function POST(request: Request) {
     }
     const facets: Record<string, string[]> = {};
     for (const message of messages) for (const [key, value] of Object.entries(message.segmentos ?? {})) if (value) facets[key] = [...new Set([...(facets[key] ?? []), value])].sort();
-    const preview = { messages, warnings, totalRows: parsed.rows.length, matchedStores, facets, useSchedule };
+    const preview = { messages, warnings, totalRows: parsed.rows.length, matchedStores, facets, useSchedule, messageTemplates: templates };
     const admin = createAdminClient();
     const { data: settings } = await admin.from("system_settings").select("retention_days").eq("organization_id", auth.access.profile.organization_id).single();
     const retentionDays = settings?.retention_days ?? 30;
@@ -122,7 +127,7 @@ export async function POST(request: Request) {
       expires_at: expiresAt,
     }).select("id").single();
     if (saveError || !session) throw new Error(saveError?.message ?? "Nao foi possivel salvar a preparacao");
-    await writeAudit({ actorId: auth.userId, organizationId: auth.access.profile.organization_id, action: "planning_session_created", entityType: "planning_session", entityId: session.id, metadata: { name, day, totalRows: parsed.rows.length, messages: messages.length, useSchedule, hasSegmentation: !!(segmentationFile instanceof File && segmentationFile.size > 0), accountMode, accountCount: accountIds.length, accountRotationBatchSize } });
+    await writeAudit({ actorId: auth.userId, organizationId: auth.access.profile.organization_id, action: "planning_session_created", entityType: "planning_session", entityId: session.id, metadata: { name, day, totalRows: parsed.rows.length, messages: messages.length, messageVariants: templates.length, useSchedule, hasSegmentation: !!(segmentationFile instanceof File && segmentationFile.size > 0), accountMode, accountCount: accountIds.length, accountRotationBatchSize } });
     return NextResponse.json({ sessionId: session.id, saved: true });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Falha ao preparar campanha" }, { status: 400 });

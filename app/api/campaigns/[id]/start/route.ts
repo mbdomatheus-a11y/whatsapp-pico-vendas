@@ -34,6 +34,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   const claimed = Array.isArray(data) ? data[0] : data;
   if (!claimed) return NextResponse.json({ processed: 0, sent: 0, failed: 0, remaining: 0, complete: true });
+  const { data: messageMeta } = await admin.from("message_queue").select("message_variant").eq("id", claimed.id).maybeSingle();
   let text = claimed.mensagem as string;
   if (claimed.confirmation_enabled) {
     const token = randomBytes(12).toString("base64url"); const tokenHash = createHash("sha256").update(token).digest("hex");
@@ -58,7 +59,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const { data: group } = await admin.from("user_groups").select("organization_id").eq("id", claimed.group_id).single();
     const { data: settings } = await admin.from("system_settings").select("retention_days").eq("organization_id", group?.organization_id).single();
     const retention = settings?.retention_days ?? 30;
-    await admin.from("communication_logs").insert({ organization_id: group?.organization_id, group_id: claimed.group_id, campaign_id: id, message_id: claimed.id, actor_id: auth.userId, recipient_label: claimed.gerente_id, destination_masked: `********${String(claimed.telefone).slice(-4)}`, message_text: claimed.mensagem, attachment_names: (attachments ?? []).map((item) => item.file_name), provider_id: result.externalId ?? null, expires_at: retention === 0 ? null : new Date(Date.now() + retention * 86400000).toISOString() });
+    await admin.from("communication_logs").insert({ organization_id: group?.organization_id, group_id: claimed.group_id, campaign_id: id, message_id: claimed.id, actor_id: auth.userId, recipient_label: claimed.gerente_id, destination_masked: `********${String(claimed.telefone).slice(-4)}`, message_text: claimed.mensagem, message_variant: messageMeta?.message_variant ?? 1, attachment_names: (attachments ?? []).map((item) => item.file_name), provider_id: result.externalId ?? null, expires_at: retention === 0 ? null : new Date(Date.now() + retention * 86400000).toISOString() });
   }
   await admin.rpc("finish_message", { target_id: claimed.id, was_success: result.success, provider_id: result.success ? result.externalId ?? null : null, error_text: result.success ? null : result.error });
   const { count: remaining } = await admin.from("message_queue").select("id", { count: "exact", head: true }).eq("campaign_id", id).eq("status", "pronto_para_envio");

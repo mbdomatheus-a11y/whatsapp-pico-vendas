@@ -3,7 +3,7 @@ import { requireApiUser } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { writeAudit } from "@/lib/audit";
 
-type InputMessage = { gerente_id: string; telefone: string; mensagem: string };
+type InputMessage = { gerente_id: string; telefone: string; mensagem: string; message_variant?: number };
 type PlanningMessage = InputMessage & { segmentos?: Record<string,string> };
 const phonePattern = /^\d{10,15}$/;
 
@@ -66,7 +66,7 @@ export async function POST(request: Request) {
     const expectedCount = Number(form.get("expectedRecipientCount"));
     if (!selected.length) return NextResponse.json({ error: "A segmentacao selecionada nao possui destinatarios" }, { status: 400 });
     if (!Number.isInteger(expectedCount) || expectedCount !== selected.length) return NextResponse.json({ error: "A selecao mudou antes da criacao. Revise os filtros e tente novamente" }, { status: 409 });
-    messages = selected.map(({ gerente_id, telefone, mensagem }) => ({ gerente_id, telefone, mensagem }));
+    messages = selected.map(({ gerente_id, telefone, mensagem, message_variant }) => ({ gerente_id, telefone, mensagem, message_variant }));
     if (messages.length > 500) return NextResponse.json({ error: "A selecao possui mais de 500 destinatarios. Aplique filtros adicionais antes de criar a campanha" }, { status: 400 });
     const { error: filterError } = await admin.from("planning_sessions").update({ selected_filters: filters, updated_at: new Date().toISOString() }).eq("id", planningSessionId).eq("status", "preparada");
     if (filterError) return NextResponse.json({ error: "Nao foi possivel travar a segmentacao escolhida" }, { status: 409 });
@@ -81,6 +81,7 @@ export async function POST(request: Request) {
   const rows = messages.map((m, index) => ({
     campaign_id: campaign.id, gerente_id: m.gerente_id, telefone: m.telefone,
     mensagem: m.mensagem.trim(), sequence_number: index + 1,
+    message_variant: Math.max(1, Math.min(5, Number(m.message_variant) || 1)),
     whatsapp_account_id: accountIds[Math.floor(index / rotationBatchSize) % accountIds.length],
     idempotency_key: `${campaign.id}:${m.gerente_id}:${m.telefone}`,
   }));

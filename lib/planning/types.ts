@@ -21,6 +21,7 @@ export type PlannedMessage = {
   colaboradores_no_pico: number | null;
   media_colaboradores_dia?: number | null;
   segmentos?: Record<string, string>;
+  message_variant?: number;
 };
 
 export type PreviewResult = {
