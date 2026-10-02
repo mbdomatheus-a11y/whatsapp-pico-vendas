@@ -23,8 +23,10 @@ export async function POST(request: Request) {
     const file = form.get("file");
     const segmentationFile = form.get("segmentationFile");
     const day = String(form.get("day") ?? "") as Weekday;
-    const templates = form.getAll("templates").map(String).map((item) => item.trim()).filter(Boolean);
-    if (!templates.length) templates.push(String(form.get("template") ?? SCHEDULE_MESSAGE_TEMPLATE).trim());
+    const submittedTemplates = form.getAll("templates").map(String).map((item) => item.trim());
+    const templates = submittedTemplates.length ? submittedTemplates : [String(form.get("template") ?? SCHEDULE_MESSAGE_TEMPLATE).trim()];
+    const submittedWeights = form.getAll("templateWeights").map(Number);
+    const templateWeights = templates.map((_, index) => submittedWeights[index] ?? 1);
     const template = templates[0];
     const useSchedule = String(form.get("useSchedule") ?? "true") === "true";
     const accountId = String(form.get("accountId") ?? "");
@@ -37,6 +39,7 @@ export async function POST(request: Request) {
     if (file.size > 8 * 1024 * 1024) throw new Error("A planilha deve ter no maximo 8 MB");
     if (!WEEKDAYS.includes(day)) throw new Error("Dia da semana invalido");
     if (templates.length > 5 || templates.some((item) => !item || item.length > 3000)) throw new Error("Informe entre 1 e 5 modelos validos, com ate 3000 caracteres cada");
+    if (templateWeights.some((item) => !Number.isInteger(item) || item < 1 || item > 100)) throw new Error("Informe entre 1 e 100 mensagens por modelo em cada ciclo");
     if (!name || name.length > 120) throw new Error("Nome da preparacao invalido");
     if (!auth.access.groups.some((group) => group.group_id === groupId)) throw new Error("Grupo invalido");
     if (accountMode === "single" && accountIds.length !== 1) throw new Error("Escolha uma conta para o envio");
@@ -53,6 +56,7 @@ export async function POST(request: Request) {
     const warnings = [...parsed.warnings];
     if (directory?.limited) warnings.push("A API retornou o limite de 1000 historicos. Algumas lojas podem aparecer sem escala recente.");
     const messages: PlannedMessage[] = [];
+    const templateCycle = templates.flatMap((_, index) => Array.from({ length: templateWeights[index] }, () => index));
     const usedPhones = new Set<string>();
     let matchedStores = 0;
     const regionalRows = new Map<string, { phone: string; lines: string[] }>();
@@ -71,7 +75,7 @@ export async function POST(request: Request) {
         ggl: row.ggl, regional: row.regional, cod_loja: row.storeCode, nome_loja: row.storeName,
         dia: day, faixa_pico: row.peakWindow, colaboradores_pico: useSchedule ? (planned ?? "SEM ESCALA") : "NAO UTILIZADO",
       };
-      const messageVariant = (messages.length % templates.length) + 1;
+      const messageVariant = templateCycle[messages.length % templateCycle.length] + 1;
       const selectedTemplate = templates[messageVariant - 1];
       const messageTemplate = useSchedule && planned == null && selectedTemplate === SCHEDULE_MESSAGE_TEMPLATE ? NO_SCHEDULE_MESSAGE_TEMPLATE : selectedTemplate;
       messages.push({
@@ -104,7 +108,7 @@ export async function POST(request: Request) {
     }
     const facets: Record<string, string[]> = {};
     for (const message of messages) for (const [key, value] of Object.entries(message.segmentos ?? {})) if (value) facets[key] = [...new Set([...(facets[key] ?? []), value])].sort();
-    const preview = { messages, warnings, totalRows: parsed.rows.length, matchedStores, facets, useSchedule, messageTemplates: templates };
+    const preview = { messages, warnings, totalRows: parsed.rows.length, matchedStores, facets, useSchedule, messageTemplates: templates, messageTemplateWeights: templateWeights };
     const admin = createAdminClient();
     const { data: settings } = await admin.from("system_settings").select("retention_days").eq("organization_id", auth.access.profile.organization_id).single();
     const retentionDays = settings?.retention_days ?? 30;
@@ -127,7 +131,7 @@ export async function POST(request: Request) {
       expires_at: expiresAt,
     }).select("id").single();
     if (saveError || !session) throw new Error(saveError?.message ?? "Nao foi possivel salvar a preparacao");
-    await writeAudit({ actorId: auth.userId, organizationId: auth.access.profile.organization_id, action: "planning_session_created", entityType: "planning_session", entityId: session.id, metadata: { name, day, totalRows: parsed.rows.length, messages: messages.length, messageVariants: templates.length, useSchedule, hasSegmentation: !!(segmentationFile instanceof File && segmentationFile.size > 0), accountMode, accountCount: accountIds.length, accountRotationBatchSize } });
+    await writeAudit({ actorId: auth.userId, organizationId: auth.access.profile.organization_id, action: "planning_session_created", entityType: "planning_session", entityId: session.id, metadata: { name, day, totalRows: parsed.rows.length, messages: messages.length, messageVariants: templates.length, messageVariantWeights: templateWeights, useSchedule, hasSegmentation: !!(segmentationFile instanceof File && segmentationFile.size > 0), accountMode, accountCount: accountIds.length, accountRotationBatchSize } });
     return NextResponse.json({ sessionId: session.id, saved: true });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Falha ao preparar campanha" }, { status: 400 });

@@ -31,4 +31,6 @@ export type PreviewResult = {
   matchedStores: number;
   facets: Record<string, string[]>;
   useSchedule: boolean;
+  messageTemplates?: string[];
+  messageTemplateWeights?: number[];
 };
